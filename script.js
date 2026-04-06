@@ -16,8 +16,8 @@ async function changeTab(tabName) {
 
     let endpoint = "/customers";
     if (tabName === 'view-data') {
-        title.innerText = "Danh sách Khách hàng";
-        desc.innerText = "Dữ liệu thô từ hệ thống.";
+        title.innerText = "Dữ liệu thô";
+        desc.innerText = "Dữ liệu thô từ hệ thống (file csv).";
         endpoint = "/preview-data";
     } else if (tabName === 'view-outliers') {
         title.innerText = "Dữ liệu Ngoại lai (Outliers)";
