@@ -42,6 +42,14 @@ async function changeTab(tabName) {
         title.innerText = "Dữ liệu đã Xử lý";
         desc.innerText = "Kết quả sau khi loại bỏ nhiễu và chuẩn hóa.";
         fetchAndRenderTable("/process-outliers");
+
+    // === PHẦN CODE MỚI: Thêm nhánh xử lý cho Tab Huấn luyện Mô hình ===
+    } else if (tabName === 'train-models') {
+        title.innerText = "Hiệu suất Huấn luyện Mô hình";
+        desc.innerText = "So sánh tổng quan 3 thuật toán: Multinomial NB, SVM và XGBoost.";
+        if (datasetControls) datasetControls.classList.add('hidden');
+        fetchAndRenderModelCards("/train-models");
+    // ====================================================================
     }
 }
 
@@ -107,11 +115,100 @@ async function fetchAndRenderTable(endpoint) {
     return null;
 }
 
+// === CÁC HÀM MỚI BỔ SUNG CHO TÍNH NĂNG MODEL CARDS ===
+
+async function fetchAndRenderModelCards(endpoint) {
+    const loading = document.getElementById('loading');
+    const container = document.getElementById('table-container');
+    const paginationControls = document.getElementById('pagination-controls');
+
+    container.classList.add('opacity-20');
+    loading.classList.remove('hidden');
+    if (paginationControls) paginationControls.classList.add('hidden'); 
+
+    try {
+        const res = await fetch(`${API_BASE}${endpoint}`);
+        const result = await res.json();
+        
+        if (result.status === "success") {
+            setTimeout(() => {
+                renderModelCards(result.data);
+                loading.classList.add('hidden');
+                container.classList.remove('opacity-100', 'opacity-20');
+            }, 300);
+        }
+    } catch (error) {
+        console.error("Lỗi kết nối:", error);
+        loading.innerHTML = '<p class="text-red-500">Lỗi kết nối Backend lấy thông tin Mô hình!</p>';
+    }
+}
+
+function renderModelCards(data) {
+    const container = document.getElementById('table-container');
+    
+    // 1. Tạm ẩn bảng dữ liệu (không xóa để tránh lỗi DOM khi switch qua lại các tab)
+    const table = container.querySelector('table');
+    if (table) table.style.display = 'none';
+
+    // 2. Xóa giao diện cards cũ nếu tồn tại
+    const oldCards = document.getElementById('model-cards-wrapper');
+    if (oldCards) oldCards.remove();
+
+    // 3. Render giao diện Thẻ so sánh
+    let htmlContent = `<div id="model-cards-wrapper" class="grid grid-cols-1 md:grid-cols-3 gap-6 p-6">`;
+    
+    data.forEach(model => {
+        let borderColor = model.accuracy > 85 ? 'border-emerald-500' : 'border-blue-500';
+        
+        htmlContent += `
+            <div class="bg-slate-800 rounded-xl p-6 border-t-4 ${borderColor} shadow-lg hover:transform hover:-translate-y-1 transition-all">
+                <h3 class="text-xl font-bold text-white mb-4 text-center">${model.model_name}</h3>
+                
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center bg-slate-700/50 p-3 rounded-lg">
+                        <span class="text-slate-400 text-sm"><i class="fas fa-clock mr-2"></i>Thời gian:</span>
+                        <span class="text-white font-mono font-bold">${model.training_time_sec}s</span>
+                    </div>
+                    
+                    <div class="flex justify-between items-center bg-emerald-900/20 p-3 rounded-lg border border-emerald-500/20">
+                        <span class="text-emerald-400 text-sm"><i class="fas fa-check-circle mr-2"></i>Đúng:</span>
+                        <span class="text-emerald-400 font-mono font-bold">${model.correct_predictions.toLocaleString()}</span>
+                    </div>
+                    
+                    <div class="flex justify-between items-center bg-rose-900/20 p-3 rounded-lg border border-rose-500/20">
+                        <span class="text-rose-400 text-sm"><i class="fas fa-times-circle mr-2"></i>Sai:</span>
+                        <span class="text-rose-400 font-mono font-bold">${model.incorrect_predictions.toLocaleString()}</span>
+                    </div>
+                </div>
+                
+                <div class="mt-6 pt-4 border-t border-slate-700 text-center">
+                    <p class="text-slate-400 text-sm mb-1">Hiệu suất (Accuracy)</p>
+                    <p class="text-4xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+                        ${model.accuracy}%
+                    </p>
+                </div>
+            </div>
+        `;
+    });
+    
+    htmlContent += `</div>`;
+    container.insertAdjacentHTML('beforeend', htmlContent);
+}
+
 // ==========================================
 // CÁC HÀM XỬ LÝ GIAO DIỆN BẢNG VÀ PHÂN TRANG
 // ==========================================
 
 function renderTable() {
+    // === PHẦN MỚI THÊM: Xử lý hiển thị lại Bảng nếu người dùng chuyển từ Tab Mô hình về ===
+    const tableContainer = document.getElementById('table-container');
+    const table = tableContainer.querySelector('table');
+    if (table) table.style.display = 'table'; // Hiển thị lại thẻ table
+    
+    const modelCards = document.getElementById('model-cards-wrapper');
+    if (modelCards) modelCards.remove(); // Dọn dẹp thẻ mô hình
+    // =====================================================================================
+
     const headerRow = document.getElementById('table-header');
     const bodyRow = document.getElementById('table-body');
     const paginationControls = document.getElementById('pagination-controls');
