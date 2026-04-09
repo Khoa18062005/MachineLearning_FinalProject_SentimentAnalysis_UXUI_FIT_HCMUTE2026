@@ -43,13 +43,19 @@ async function changeTab(tabName) {
         desc.innerText = "Kết quả sau khi loại bỏ nhiễu và chuẩn hóa.";
         fetchAndRenderTable("/process-outliers");
 
-        // === PHẦN CODE MỚI: Thêm nhánh xử lý cho Tab Huấn luyện Mô hình ===
     } else if (tabName === 'train-models') {
         title.innerText = "Hiệu suất Huấn luyện Mô hình";
         desc.innerText = "So sánh tổng quan 3 thuật toán: Multinomial NB, SVM và XGBoost.";
         if (datasetControls) datasetControls.classList.add('hidden');
         fetchAndRenderModelCards("/train-models");
-        // ====================================================================
+
+    } else if (tabName === 'visualize-params') {
+        title.innerText = "Trực quan hóa tham số mô hình";
+        desc.innerText = "Phân tích sự biến thiên của Accuracy dựa trên các tham số đặc trưng.";
+        if (datasetControls) datasetControls.classList.add('hidden');
+
+        // Mặc định hiện MNB
+        renderModelStudyChart('mnb');
     }
 }
 
@@ -318,10 +324,10 @@ function renderTable() {
             const value = item[col];
             const isLongText = col === 'text' || col === 'C6';
 
-            let textColor = 'text-slate-400'; 
+            let textColor = 'text-slate-400';
 
             if (typeof value === 'number') {
-                textColor = 'font-mono text-emerald-400'; 
+                textColor = 'font-mono text-emerald-400';
             }
 
             if (col.toLowerCase() === 'predicted') {
@@ -388,7 +394,7 @@ async function showProbDetails(text) {
 
     const modal = document.getElementById('prob-modal');
     const content = document.getElementById('modal-content');
-    
+
     modal.classList.remove('hidden');
     content.innerHTML = `
         <div class="text-center py-20">
@@ -399,7 +405,7 @@ async function showProbDetails(text) {
     try {
         const res = await fetch(`${API_BASE}/model-details?text=${encodeURIComponent(text)}`);
         const result = await res.json();
-        
+
         if (result.status === "success") {
             const data = result.data;
             const labels = Object.keys(data);
@@ -502,6 +508,45 @@ async function showProbDetails(text) {
 
 function closeModal() {
     document.getElementById('prob-modal').classList.add('hidden');
+}
+
+function renderModelStudyChart(type) {
+    const container = document.getElementById('table-container');
+    const loading = document.getElementById('loading');
+    // 1. Lấy thêm phần tử điều khiển phân trang
+    const paginationControls = document.getElementById('pagination-controls');
+
+    // 2. Ẩn loading và ẨN CẢ THANH PHÂN TRANG
+    if (loading) loading.classList.add('hidden');
+    if (paginationControls) paginationControls.classList.add('hidden'); // Dòng quan trọng để xóa thanh bên dưới
+    
+    container.classList.remove('opacity-20');
+
+    const titles = {
+        'mnb': "Laplace smoothing - Multinomial Naive Bayes",
+        'svm': "Gamma & C - Support Vector Machine",
+        'xgb': "Max Depth - XGBoost Classifier"
+    };
+
+    container.innerHTML = `
+        <div class="p-8 flex flex-col items-center bg-slate-800/30 rounded-2xl border border-slate-700">
+            <div class="flex gap-4 mb-8 bg-slate-900/50 p-1 rounded-xl border border-slate-700">
+                <button onclick="renderModelStudyChart('mnb')" class="px-4 py-2 rounded-lg text-sm ${type === 'mnb' ? 'bg-blue-600 text-white' : 'text-slate-400'}">MNB</button>
+                <button onclick="renderModelStudyChart('svm')" class="px-4 py-2 rounded-lg text-sm ${type === 'svm' ? 'bg-blue-600 text-white' : 'text-slate-400'}">SVM</button>
+                <button onclick="renderModelStudyChart('xgb')" class="px-4 py-2 rounded-lg text-sm ${type === 'xgb' ? 'bg-blue-600 text-white' : 'text-slate-400'}">XGBoost</button>
+            </div>
+
+            <h3 class="text-xl font-bold text-white mb-6 flex items-center gap-3">
+                <i class="fas fa-chart-area text-pink-400"></i> ${titles[type]}
+            </h3>
+            
+            <div class="w-full flex justify-center">
+                <img src="${API_BASE}/charts/${type}?t=${new Date().getTime()}" 
+                     class="rounded-xl shadow-2xl border border-slate-600 max-w-4xl h-auto"
+                     onerror="this.src='https://placehold.co/600x400/1e293b/475569?text=Chưa+có+dữ liệu+${type.toUpperCase()}'">
+            </div>
+        </div>
+    `;
 }
 
 // Khi tải trang xong sẽ mặc định gọi Tab Xem dữ liệu thô
