@@ -142,7 +142,67 @@ async function fetchAndRenderModelCards(endpoint) {
         loading.innerHTML = '<p class="text-red-500">Lỗi kết nối Backend lấy thông tin Mô hình!</p>';
     }
 }
+// --- HÀM GỌI API LẤY DANH SÁCH LỖI ---
+async function viewModelErrors(modelName) {
+    if (modelName.includes("(Chưa huấn luyện)")) return;
 
+    const title = document.getElementById('page-title');
+    const desc = document.getElementById('page-desc');
+    
+    title.innerText = `Phân tích lỗi: ${modelName}`;
+    desc.innerText = "Danh sách các văn bản bị thuật toán dự đoán sai trên tập Test.";
+
+    // Ẩn 3 tấm thẻ đi, hiện lại Bảng
+    document.getElementById('model-cards-wrapper').style.display = 'none';
+    const container = document.getElementById('table-container');
+    container.querySelector('table').style.display = 'table';
+    
+    setupBackButton(true); // Hiện nút Quay lại
+
+    const loading = document.getElementById('loading');
+    container.classList.add('opacity-20');
+    loading.classList.remove('hidden');
+
+    try {
+        // GỌI API BACKEND: /model-errors
+        const res = await fetch(`${API_BASE}/model-errors?model_name=${encodeURIComponent(modelName)}`);
+        const result = await res.json();
+
+        if (result.status === "success") {
+            globalData = result.data;
+            currentPage = 1;
+            currentMode = 'errors'; // Đánh dấu trạng thái đang xem lỗi
+
+            setTimeout(() => {
+                renderTable(); 
+                loading.classList.add('hidden');
+                container.classList.remove('opacity-20');
+            }, 300);
+        }
+    } catch (error) {
+        console.error("Lỗi:", error);
+        loading.innerHTML = '<p class="text-red-500">Lỗi khi tải dữ liệu phân tích!</p>';
+    }
+}
+
+// --- HÀM TẠO NÚT QUAY LẠI KHI XEM CÁC HÀNG LỖI ---
+function setupBackButton(show) {
+    let backBtn = document.getElementById('back-to-models-btn');
+    if (!backBtn) {
+        backBtn = document.createElement('button');
+        backBtn.id = 'back-to-models-btn';
+        backBtn.className = 'mb-4 px-5 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-medium transition-colors shadow-lg';
+        backBtn.innerHTML = '<i class="fas fa-arrow-left mr-2"></i> Quay lại So sánh Mô hình';
+        backBtn.onclick = () => {
+            setupBackButton(false);
+            changeTab('train-models'); // Trở lại tab Mô hình
+        };
+        // Chèn nút lên trên cái bảng
+        const wrapper = document.querySelector('.table-wrapper');
+        wrapper.parentNode.insertBefore(backBtn, wrapper);
+    }
+    backBtn.style.display = show ? 'inline-block' : 'none';
+}
 function renderModelCards(data) {
     const container = document.getElementById('table-container');
     
@@ -161,9 +221,10 @@ function renderModelCards(data) {
         let borderColor = model.accuracy > 85 ? 'border-emerald-500' : 'border-blue-500';
         
         htmlContent += `
-            <div class="bg-slate-800 rounded-xl p-6 border-t-4 ${borderColor} shadow-lg hover:transform hover:-translate-y-1 transition-all">
+            <div onclick="viewModelErrors('${model.model_name}')" 
+                 class="bg-slate-800 rounded-xl p-6 border-t-4 ${borderColor} shadow-lg hover:transform hover:-translate-y-1 transition-all cursor-pointer">
                 <h3 class="text-xl font-bold text-white mb-4 text-center">${model.model_name}</h3>
-                
+
                 <div class="space-y-4">
                     <div class="flex justify-between items-center bg-slate-700/50 p-3 rounded-lg">
                         <span class="text-slate-400 text-sm"><i class="fas fa-clock mr-2"></i>Thời gian:</span>
