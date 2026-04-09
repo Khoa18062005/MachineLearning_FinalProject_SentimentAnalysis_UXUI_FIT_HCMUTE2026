@@ -308,23 +308,25 @@ function renderTable() {
         const isDirty = item.needs_processing === true;
         const rowBg = isDirty ? 'bg-red-500/10' : 'hover:bg-blue-500/5';
 
+        // Escape dấu nháy đơn để không làm hỏng thuộc tính onclick
+        const escapedText = item.text ? item.text.replace(/'/g, "\\'") : "";
+
         return `
-    <tr class="transition-colors group border-b border-slate-800 ${rowBg}">
+    <tr onclick="showProbDetails('${escapedText}')" 
+        class="transition-colors group border-b border-slate-800 ${rowBg} cursor-pointer hover:bg-blue-600/10">
         ${columns.map(col => {
             const value = item[col];
             const isLongText = col === 'text' || col === 'C6';
 
-            let textColor = 'text-slate-400'; // Màu mặc định cho text
+            let textColor = 'text-slate-400'; 
 
             if (typeof value === 'number') {
-                textColor = 'font-mono text-emerald-400'; // Màu xanh cho các số (ID, Target...)
+                textColor = 'font-mono text-emerald-400'; 
             }
 
-            // Đổi màu đỏ cho cột predicted
             if (col.toLowerCase() === 'predicted') {
                 textColor = 'font-mono text-red-500 font-bold';
             }
-            // -------------------------------------------------------
 
             if (isDirty && isLongText) {
                 textColor = 'text-red-400 font-medium';
@@ -378,6 +380,128 @@ function nextPage(totalPages) {
         currentPage++;
         renderTable();
     }
+}
+
+// Hiển thị kết quả tính toán của những mẫu bị sai
+async function showProbDetails(text) {
+    if (currentMode !== 'errors') return;
+
+    const modal = document.getElementById('prob-modal');
+    const content = document.getElementById('modal-content');
+    
+    modal.classList.remove('hidden');
+    content.innerHTML = `
+        <div class="text-center py-20">
+            <div class="loader mb-4 mx-auto"></div>
+            <p class="text-blue-400 font-medium">Đang trích xuất dữ liệu xác suất...</p>
+        </div>`;
+
+    try {
+        const res = await fetch(`${API_BASE}/model-details?text=${encodeURIComponent(text)}`);
+        const result = await res.json();
+        
+        if (result.status === "success") {
+            const data = result.data;
+            const labels = Object.keys(data);
+            const words = data[labels[0]].word_steps.map(s => s.word);
+
+            // Tính toán phần trăm độ tin cậy để tránh hiển thị số mũ cực nhỏ
+            const s0 = data["0"].final_score;
+            const s4 = data["4"].final_score;
+            const total = s0 + s4;
+            const conf0 = total > 0 ? (s0 / total) * 100 : 50;
+            const conf4 = total > 0 ? (s4 / total) * 100 : 50;
+
+            let html = `
+                <div class="mb-8 p-6 bg-slate-900/50 rounded-2xl border border-slate-700 shadow-inner">
+                    <span class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Phân tích văn bản đầu vào:</span>
+                    <h3 class="text-2xl text-white font-bold mt-1 font-serif">"${text}"</h3>
+                </div>
+
+                <div class="mb-8 overflow-hidden rounded-2xl border border-slate-700 bg-[#1e293b]">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="bg-slate-700/50 text-[11px] uppercase tracking-wider text-slate-300">
+                                <th class="px-6 py-4 font-bold">Từ khóa (Feature)</th>
+                                <th class="px-6 py-4 font-bold text-rose-400 text-center">P(word | Nhãn 0)</th>
+                                <th class="px-6 py-4 font-bold text-emerald-400 text-center">P(word | Nhãn 4)</th>
+                                <th class="px-6 py-4 font-bold text-slate-400 text-center">Ưu thế</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-700/50 text-sm">
+            `;
+
+            words.forEach((word, i) => {
+                const p0 = data["0"].word_steps[i].prob;
+                const p4 = data["4"].word_steps[i].prob;
+                const winner = p0 > p4 ? "Nhãn 0" : "Nhãn 4";
+                const winnerColor = p0 > p4 ? "text-rose-400" : "text-emerald-400";
+
+                html += `
+                    <tr class="hover:bg-slate-700/20 transition-colors">
+                        <td class="px-6 py-4 text-white font-medium">${word}</td>
+                        <td class="px-6 py-4 font-mono text-center ${p0 > p4 ? 'text-rose-400 font-bold' : 'text-slate-500'}">${p0.toFixed(6)}</td>
+                        <td class="px-6 py-4 font-mono text-center ${p4 > p0 ? 'text-emerald-400 font-bold' : 'text-slate-500'}">${p4.toFixed(6)}</td>
+                        <td class="px-6 py-4 text-center">
+                            <span class="px-2 py-1 rounded text-[10px] font-bold bg-slate-700/50 ${winnerColor}">${winner}</span>
+                        </td>
+                    </tr>`;
+            });
+
+            html += `</tbody></table></div>`;
+
+            // Cập nhật hiển thị Card với Phần trăm và Thanh tiến trình
+            html += `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="relative p-6 rounded-2xl border ${s0 > s4 ? 'border-rose-500 bg-rose-500/10' : 'border-slate-700 bg-slate-800/40'}">
+                        ${s0 > s4 ? '<span class="absolute -top-3 left-6 px-3 py-1 bg-rose-500 text-white text-[10px] font-black rounded-full uppercase">Mô hình chọn</span>' : ''}
+                        <div class="flex justify-between items-center mb-4">
+                            <div>
+                                <h4 class="text-rose-400 font-black text-xs uppercase tracking-widest">Tiêu cực (Label 0)</h4>
+                                <p class="text-slate-500 text-[10px] mt-1 italic">Xác suất tiên nghiệm: ${data["0"].prior.toFixed(4)}</p>
+                            </div>
+                            <span class="text-white font-mono font-bold text-xl">${conf0.toFixed(2)}%</span>
+                        </div>
+                        
+                        <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden mb-2">
+                            <div class="bg-rose-500 h-full transition-all duration-500" style="width: ${conf0}%"></div>
+                        </div>
+                        <div class="text-[10px] text-slate-500 font-mono">Raw: ${s0.toExponential(2)}</div>
+                    </div>
+
+                    <div class="relative p-6 rounded-2xl border ${s4 > s0 ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-700 bg-slate-800/40'}">
+                        ${s4 > s0 ? '<span class="absolute -top-3 left-6 px-3 py-1 bg-emerald-500 text-white text-[10px] font-black rounded-full uppercase">Mô hình chọn</span>' : ''}
+                        <div class="flex justify-between items-center mb-4">
+                            <div>
+                                <h4 class="text-emerald-400 font-black text-xs uppercase tracking-widest">Tích cực (Label 4)</h4>
+                                <p class="text-slate-500 text-[10px] mt-1 italic">Xác suất tiên nghiệm: ${data["4"].prior.toFixed(4)}</p>
+                            </div>
+                            <span class="text-white font-mono font-bold text-xl">${conf4.toFixed(2)}%</span>
+                        </div>
+                        
+                        <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden mb-2">
+                            <div class="bg-emerald-500 h-full transition-all duration-500" style="width: ${conf4}%"></div>
+                        </div>
+                        <div class="text-[10px] text-slate-500 font-mono">Raw: ${s4.toExponential(2)}</div>
+                    </div>
+                </div>
+
+                <div class="mt-8 pt-6 border-t border-slate-700 flex items-center justify-center gap-3">
+                    <div class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                    <p class="text-slate-400 text-xs italic">Kết luận: Thuật toán chọn nhãn có Độ tin cậy cao hơn sau khi chuẩn hóa kết quả nhân Naive Bayes.</p>
+                </div>
+            `;
+
+            content.innerHTML = html;
+        }
+    } catch (error) {
+        console.error("Modal Error:", error);
+        content.innerHTML = `<div class="p-10 text-center text-rose-400 font-bold">Lỗi kết nối Backend hoặc dữ liệu không tồn tại!</div>`;
+    }
+}
+
+function closeModal() {
+    document.getElementById('prob-modal').classList.add('hidden');
 }
 
 // Khi tải trang xong sẽ mặc định gọi Tab Xem dữ liệu thô
