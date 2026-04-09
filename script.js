@@ -212,48 +212,77 @@ function setupBackButton(show) {
 function renderModelCards(data) {
     const container = document.getElementById('table-container');
 
-    // 1. Tạm ẩn bảng dữ liệu (không xóa để tránh lỗi DOM khi switch qua lại các tab)
+    // 1. Tạm ẩn bảng dữ liệu
     const table = container.querySelector('table');
     if (table) table.style.display = 'none';
 
-    // 2. Xóa giao diện cards cũ nếu tồn tại
+    // 2. Xóa giao diện cards cũ
     const oldCards = document.getElementById('model-cards-wrapper');
     if (oldCards) oldCards.remove();
 
-    // 3. Render giao diện Thẻ so sánh
-    let htmlContent = `<div id="model-cards-wrapper" class="grid grid-cols-1 md:grid-cols-3 gap-6 p-6">`;
+    // 3. Render giao diện mới: Xếp theo chiều dọc (flex-col), mỗi model là 1 hàng
+    let htmlContent = `<div id="model-cards-wrapper" class="flex flex-col gap-8 p-6 w-full">`;
 
     data.forEach(model => {
+        const isTrained = !model.model_name.includes("(Chưa huấn luyện)");
         let borderColor = model.accuracy > 85 ? 'border-emerald-500' : 'border-blue-500';
+        
+        // Xác định mã biểu đồ tương ứng với tên mô hình
+        let cmChartKey = '';
+        if (model.model_name.includes("Custom")) cmChartKey = 'mnb_custom_cm';
+        else if (model.model_name.includes("Library")) cmChartKey = 'mnb_library_cm';
+        else if (model.model_name.includes("SVM")) cmChartKey = 'svm_cm';
+        else if (model.model_name.includes("XGBoost")) cmChartKey = 'xgb_cm';
 
         htmlContent += `
-            <div onclick="viewModelErrors('${model.model_name}')" 
-                 class="bg-slate-800 rounded-xl p-6 border-t-4 ${borderColor} shadow-lg hover:transform hover:-translate-y-1 transition-all cursor-pointer">
-                <h3 class="text-xl font-bold text-white mb-4 text-center">${model.model_name}</h3>
-
-                <div class="space-y-4">
-                    <div class="flex justify-between items-center bg-slate-700/50 p-3 rounded-lg">
-                        <span class="text-slate-400 text-sm"><i class="fas fa-clock mr-2"></i>Thời gian:</span>
-                        <span class="text-white font-mono font-bold">${model.training_time_sec}s</span>
-                    </div>
-                    
-                    <div class="flex justify-between items-center bg-emerald-900/20 p-3 rounded-lg border border-emerald-500/20">
-                        <span class="text-emerald-400 text-sm"><i class="fas fa-check-circle mr-2"></i>Đúng:</span>
-                        <span class="text-emerald-400 font-mono font-bold">${model.correct_predictions.toLocaleString()}</span>
-                    </div>
-                    
-                    <div class="flex justify-between items-center bg-rose-900/20 p-3 rounded-lg border border-rose-500/20">
-                        <span class="text-rose-400 text-sm"><i class="fas fa-times-circle mr-2"></i>Sai:</span>
-                        <span class="text-rose-400 font-mono font-bold">${model.incorrect_predictions.toLocaleString()}</span>
-                    </div>
-                </div>
+            <div class="flex flex-col lg:flex-row gap-6 bg-slate-800/40 p-6 rounded-2xl border border-slate-700 items-stretch">
                 
-                <div class="mt-6 pt-4 border-t border-slate-700 text-center">
-                    <p class="text-slate-400 text-sm mb-1">Hiệu suất (Accuracy)</p>
-                    <p class="text-4xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
-                        ${model.accuracy}%
-                    </p>
+                <div onclick="viewModelErrors('${model.model_name}')" 
+                     class="w-full lg:w-1/3 bg-slate-800 rounded-xl p-6 border-t-4 ${borderColor} shadow-lg hover:transform hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between">
+                    <h3 class="text-xl font-bold text-white mb-4 text-center">${model.model_name}</h3>
+
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center bg-slate-700/50 p-3 rounded-lg">
+                            <span class="text-slate-400 text-sm"><i class="fas fa-clock mr-2"></i>Thời gian:</span>
+                            <span class="text-white font-mono font-bold">${model.training_time_sec}s</span>
+                        </div>
+                        
+                        <div class="flex justify-between items-center bg-emerald-900/20 p-3 rounded-lg border border-emerald-500/20">
+                            <span class="text-emerald-400 text-sm"><i class="fas fa-check-circle mr-2"></i>Đúng:</span>
+                            <span class="text-emerald-400 font-mono font-bold">${model.correct_predictions.toLocaleString()}</span>
+                        </div>
+                        
+                        <div class="flex justify-between items-center bg-rose-900/20 p-3 rounded-lg border border-rose-500/20">
+                            <span class="text-rose-400 text-sm"><i class="fas fa-times-circle mr-2"></i>Sai:</span>
+                            <span class="text-rose-400 font-mono font-bold">${model.incorrect_predictions.toLocaleString()}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 pt-4 border-t border-slate-700 text-center">
+                        <p class="text-slate-400 text-sm mb-1">Hiệu suất (Accuracy)</p>
+                        <p class="text-4xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+                            ${model.accuracy}%
+                        </p>
+                    </div>
+                    <div class="text-center mt-3">
+                        <span class="text-xs text-slate-500 italic"><i class="fas fa-hand-pointer mr-1"></i>Click để xem chi tiết lỗi</span>
+                    </div>
                 </div>
+
+                <div class="w-full lg:w-3/4 bg-[#1e293b] rounded-xl border border-slate-700 p-4 flex flex-col items-center justify-center relative overflow-hidden">
+                    ${isTrained ? `
+                        <h4 class="text-slate-300 font-bold mb-2 uppercase tracking-wider text-[11px]"><i class="fas fa-border-all text-blue-400 mr-2"></i>Ma trận nhầm lẫn (Confusion Matrix)</h4>
+                        <img src="${API_BASE}/charts/${cmChartKey}?t=${new Date().getTime()}" 
+                             class="w-full h-auto max-h-[450px] object-fill rounded-lg shadow-md"
+                             onerror="this.parentElement.innerHTML='<div class=\\'flex flex-col items-center justify-center h-full text-slate-500 italic\\'><i class=\\'fas fa-image text-3xl mb-2 opacity-50\\'></i><p>Chưa có ảnh biểu đồ ${cmChartKey}.png</p></div>'">
+                    ` : `
+                        <div class="text-slate-600 italic flex flex-col items-center justify-center h-full">
+                            <i class="fas fa-chart-bar text-4xl mb-3 opacity-20"></i>
+                            <p>Hãy huấn luyện mô hình để xem biểu đồ</p>
+                        </div>
+                    `}
+                </div>
+
             </div>
         `;
     });
