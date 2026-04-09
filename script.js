@@ -14,9 +14,9 @@ async function changeTab(tabName) {
     const title = document.getElementById('page-title');
     const desc = document.getElementById('page-desc');
     const datasetControls = document.getElementById('dataset-controls');
-    
+
     // Mặc định ẩn 3 nút bấm (Train, Val, Test) đi, chỉ hiện khi ở đúng Tab
-    if (datasetControls) datasetControls.classList.add('hidden'); 
+    if (datasetControls) datasetControls.classList.add('hidden');
 
     // Điều hướng dựa vào tab được chọn
     if (tabName === 'view-data') {
@@ -35,21 +35,21 @@ async function changeTab(tabName) {
         currentMode = 'clean'; // Set cờ là dữ liệu sạch
         title.innerText = "Dữ liệu đưa vào huấn luyện";
         desc.innerText = "Dữ liệu đã qua bước Tiền xử lý: Xóa URL, mention, số, ký tự đặc biệt, emoji.";
-        if (datasetControls) datasetControls.classList.remove('hidden'); 
-        loadSubDataset('train'); 
+        if (datasetControls) datasetControls.classList.remove('hidden');
+        loadSubDataset('train');
 
     } else if (tabName === 'process-outliers') {
         title.innerText = "Dữ liệu đã Xử lý";
         desc.innerText = "Kết quả sau khi loại bỏ nhiễu và chuẩn hóa.";
         fetchAndRenderTable("/process-outliers");
 
-    // === PHẦN CODE MỚI: Thêm nhánh xử lý cho Tab Huấn luyện Mô hình ===
+        // === PHẦN CODE MỚI: Thêm nhánh xử lý cho Tab Huấn luyện Mô hình ===
     } else if (tabName === 'train-models') {
         title.innerText = "Hiệu suất Huấn luyện Mô hình";
         desc.innerText = "So sánh tổng quan 3 thuật toán: Multinomial NB, SVM và XGBoost.";
         if (datasetControls) datasetControls.classList.add('hidden');
         fetchAndRenderModelCards("/train-models");
-    // ====================================================================
+        // ====================================================================
     }
 }
 
@@ -73,7 +73,7 @@ async function loadSubDataset(setType) {
     }
 
     const result = await fetchAndRenderTable(endpointUrl);
-    
+
     if (result && result.counts) {
         const countText = `Tổng số mẫu - Train: ${result.counts.train_count.toLocaleString()} | Val: ${result.counts.val_count.toLocaleString()} | Test: ${result.counts.test_count.toLocaleString()}`;
         document.getElementById('dataset-counts').innerText = countText;
@@ -93,19 +93,19 @@ async function fetchAndRenderTable(endpoint) {
     try {
         const res = await fetch(`${API_BASE}${endpoint}`);
         const result = await res.json();
-        
+
         if (result.status === "success") {
             // LƯU DỮ LIỆU VÀ RESET TRANG VỀ 1
             globalData = result.data;
             currentPage = 1;
 
-            setTimeout(() => { 
+            setTimeout(() => {
                 renderTable(); // Gọi hàm render không cần truyền param
                 loading.classList.add('hidden');
                 container.classList.remove('opacity-100'); // Clean class cũ nếu có
                 container.classList.remove('opacity-20');
             }, 300);
-            
+
             return result; // Trả về data để hàm loadSubDataset lấy thông tin counts
         }
     } catch (error) {
@@ -124,12 +124,12 @@ async function fetchAndRenderModelCards(endpoint) {
 
     container.classList.add('opacity-20');
     loading.classList.remove('hidden');
-    if (paginationControls) paginationControls.classList.add('hidden'); 
+    if (paginationControls) paginationControls.classList.add('hidden');
 
     try {
         const res = await fetch(`${API_BASE}${endpoint}`);
         const result = await res.json();
-        
+
         if (result.status === "success") {
             setTimeout(() => {
                 renderModelCards(result.data);
@@ -148,7 +148,7 @@ async function viewModelErrors(modelName) {
 
     const title = document.getElementById('page-title');
     const desc = document.getElementById('page-desc');
-    
+
     title.innerText = `Phân tích lỗi: ${modelName}`;
     desc.innerText = "Danh sách các văn bản bị thuật toán dự đoán sai trên tập Test.";
 
@@ -156,7 +156,7 @@ async function viewModelErrors(modelName) {
     document.getElementById('model-cards-wrapper').style.display = 'none';
     const container = document.getElementById('table-container');
     container.querySelector('table').style.display = 'table';
-    
+
     setupBackButton(true); // Hiện nút Quay lại
 
     const loading = document.getElementById('loading');
@@ -174,7 +174,7 @@ async function viewModelErrors(modelName) {
             currentMode = 'errors'; // Đánh dấu trạng thái đang xem lỗi
 
             setTimeout(() => {
-                renderTable(); 
+                renderTable();
                 loading.classList.add('hidden');
                 container.classList.remove('opacity-20');
             }, 300);
@@ -205,7 +205,7 @@ function setupBackButton(show) {
 }
 function renderModelCards(data) {
     const container = document.getElementById('table-container');
-    
+
     // 1. Tạm ẩn bảng dữ liệu (không xóa để tránh lỗi DOM khi switch qua lại các tab)
     const table = container.querySelector('table');
     if (table) table.style.display = 'none';
@@ -216,10 +216,10 @@ function renderModelCards(data) {
 
     // 3. Render giao diện Thẻ so sánh
     let htmlContent = `<div id="model-cards-wrapper" class="grid grid-cols-1 md:grid-cols-3 gap-6 p-6">`;
-    
+
     data.forEach(model => {
         let borderColor = model.accuracy > 85 ? 'border-emerald-500' : 'border-blue-500';
-        
+
         htmlContent += `
             <div onclick="viewModelErrors('${model.model_name}')" 
                  class="bg-slate-800 rounded-xl p-6 border-t-4 ${borderColor} shadow-lg hover:transform hover:-translate-y-1 transition-all cursor-pointer">
@@ -251,7 +251,7 @@ function renderModelCards(data) {
             </div>
         `;
     });
-    
+
     htmlContent += `</div>`;
     container.insertAdjacentHTML('beforeend', htmlContent);
 }
@@ -265,7 +265,7 @@ function renderTable() {
     const tableContainer = document.getElementById('table-container');
     const table = tableContainer.querySelector('table');
     if (table) table.style.display = 'table'; // Hiển thị lại thẻ table
-    
+
     const modelCards = document.getElementById('model-cards-wrapper');
     if (modelCards) modelCards.remove(); // Dọn dẹp thẻ mô hình
     // =====================================================================================
@@ -287,12 +287,12 @@ function renderTable() {
     const paginatedData = globalData.slice(startIndex, endIndex); // Lấy đúng 50 dòng của trang hiện tại
 
     const columnMapping = {
-        "target": "Cảm xúc", 
-        "id": "Mã ID",       
-        "date": "Thời gian", 
-        "flag": "Flag",      
+        "target": "Cảm xúc",
+        "id": "Mã ID",
+        "date": "Thời gian",
+        "flag": "Flag",
         "user": "Người dùng",
-        "text": "Nội dung Tweet" 
+        "text": "Nội dung Tweet"
     };
 
     const columns = Object.keys(globalData[0]).filter(col => col !== 'needs_processing');
@@ -309,23 +309,35 @@ function renderTable() {
         const rowBg = isDirty ? 'bg-red-500/10' : 'hover:bg-blue-500/5';
 
         return `
-        <tr class="transition-colors group border-b border-slate-800 ${rowBg}">
-            ${columns.map(col => {
-                const value = item[col];
-                const isLongText = col === 'text' || col === 'C6'; 
-                
-                let textColor = 'text-slate-400';
-                if (typeof value === 'number') textColor = 'font-mono text-emerald-400';
-                if (isDirty && isLongText) textColor = 'text-red-400 font-medium';
+    <tr class="transition-colors group border-b border-slate-800 ${rowBg}">
+        ${columns.map(col => {
+            const value = item[col];
+            const isLongText = col === 'text' || col === 'C6';
 
-                return `
-                    <td class="px-6 py-4 text-sm ${isLongText ? 'max-w-md truncate' : 'whitespace-nowrap'} ${textColor}">
-                        ${value}
-                    </td>
-                `;
-            }).join('')}
-        </tr>
-    `}).join('');
+            let textColor = 'text-slate-400'; // Màu mặc định cho text
+
+            if (typeof value === 'number') {
+                textColor = 'font-mono text-emerald-400'; // Màu xanh cho các số (ID, Target...)
+            }
+
+            // Đổi màu đỏ cho cột predicted
+            if (col.toLowerCase() === 'predicted') {
+                textColor = 'font-mono text-red-500 font-bold';
+            }
+            // -------------------------------------------------------
+
+            if (isDirty && isLongText) {
+                textColor = 'text-red-400 font-medium';
+            }
+
+            return `
+                <td class="px-6 py-4 text-sm ${isLongText ? 'max-w-md truncate' : 'whitespace-nowrap'} ${textColor}">
+                    ${value}
+                </td>
+            `;
+        }).join('')}
+    </tr>
+`}).join('');
 
     // Hiển thị và vẽ nút Phân trang
     if (paginationControls) {
@@ -337,7 +349,7 @@ function renderTable() {
 function renderPaginationControls(totalPages) {
     const paginationControls = document.getElementById('pagination-controls');
     if (!paginationControls) return;
-    
+
     paginationControls.innerHTML = `
         <div class="text-sm text-slate-400">
             Đang hiển thị trang <span class="font-bold text-white">${currentPage}</span> / ${totalPages} 
