@@ -216,18 +216,21 @@ function renderModelCards(data) {
     const table = container.querySelector('table');
     if (table) table.style.display = 'none';
 
-    // 2. Xóa giao diện cards cũ
+    // 2. DỌN DẸP SẠCH GIAO DIỆN CỦA CÁC TAB KHÁC
     const oldCards = document.getElementById('model-cards-wrapper');
     if (oldCards) oldCards.remove();
+    
+    // Xóa luôn biểu đồ Laplace (nếu người dùng vừa từ tab Trực quan sang)
+    const oldChart = document.getElementById('chart-study-wrapper');
+    if (oldChart) oldChart.remove();
 
-    // 3. Render giao diện mới: Xếp theo chiều dọc (flex-col), mỗi model là 1 hàng
+    // 3. Render giao diện mới
     let htmlContent = `<div id="model-cards-wrapper" class="flex flex-col gap-8 p-6 w-full">`;
 
     data.forEach(model => {
         const isTrained = !model.model_name.includes("(Chưa huấn luyện)");
         let borderColor = model.accuracy > 85 ? 'border-emerald-500' : 'border-blue-500';
         
-        // Xác định mã biểu đồ tương ứng với tên mô hình
         let cmChartKey = '';
         if (model.model_name.includes("Custom")) cmChartKey = 'mnb_custom_cm';
         else if (model.model_name.includes("Library")) cmChartKey = 'mnb_library_cm';
@@ -238,7 +241,7 @@ function renderModelCards(data) {
             <div class="flex flex-col lg:flex-row gap-6 bg-slate-800/40 p-6 rounded-2xl border border-slate-700 items-stretch">
                 
                 <div onclick="viewModelErrors('${model.model_name}')" 
-                     class="w-full lg:w-1/3 bg-slate-800 rounded-xl p-6 border-t-4 ${borderColor} shadow-lg hover:transform hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between">
+                     class="w-full lg:w-1/4 bg-slate-800 rounded-xl p-6 border-t-4 ${borderColor} shadow-lg hover:transform hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between">
                     <h3 class="text-xl font-bold text-white mb-4 text-center">${model.model_name}</h3>
 
                     <div class="space-y-4">
@@ -271,7 +274,6 @@ function renderModelCards(data) {
 
                 <div class="w-full lg:w-3/4 bg-[#1e293b] rounded-xl border border-slate-700 p-4 flex flex-col items-center justify-center relative overflow-hidden">
                     ${isTrained ? `
-                        <h4 class="text-slate-300 font-bold mb-2 uppercase tracking-wider text-[11px]"><i class="fas fa-border-all text-blue-400 mr-2"></i>Ma trận nhầm lẫn (Confusion Matrix)</h4>
                         <img src="${API_BASE}/charts/${cmChartKey}?t=${new Date().getTime()}" 
                              class="w-full h-auto max-h-[450px] object-fill rounded-lg shadow-md"
                              onerror="this.parentElement.innerHTML='<div class=\\'flex flex-col items-center justify-center h-full text-slate-500 italic\\'><i class=\\'fas fa-image text-3xl mb-2 opacity-50\\'></i><p>Chưa có ảnh biểu đồ ${cmChartKey}.png</p></div>'">
@@ -282,7 +284,6 @@ function renderModelCards(data) {
                         </div>
                     `}
                 </div>
-
             </div>
         `;
     });
@@ -296,14 +297,18 @@ function renderModelCards(data) {
 // ==========================================
 
 function renderTable() {
-    // === PHẦN MỚI THÊM: Xử lý hiển thị lại Bảng nếu người dùng chuyển từ Tab Mô hình về ===
     const tableContainer = document.getElementById('table-container');
-    const table = tableContainer.querySelector('table');
-    if (table) table.style.display = 'table'; // Hiển thị lại thẻ table
 
+    // 1. DỌN DẸP SẠCH SẼ 2 TAB CÒN LẠI TRƯỚC KHI HIỂN THỊ BẢNG
     const modelCards = document.getElementById('model-cards-wrapper');
-    if (modelCards) modelCards.remove(); // Dọn dẹp thẻ mô hình
-    // =====================================================================================
+    if (modelCards) modelCards.remove(); 
+    
+    const oldChart = document.getElementById('chart-study-wrapper');
+    if (oldChart) oldChart.remove();
+
+    // 2. Hiển thị lại thẻ table
+    const table = tableContainer.querySelector('table');
+    if (table) table.style.display = 'table'; 
 
     const headerRow = document.getElementById('table-header');
     const bodyRow = document.getElementById('table-body');
@@ -319,7 +324,7 @@ function renderTable() {
     const totalPages = Math.ceil(globalData.length / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
     const endIndex = startIndex + rowsPerPage;
-    const paginatedData = globalData.slice(startIndex, endIndex); // Lấy đúng 50 dòng của trang hiện tại
+    const paginatedData = globalData.slice(startIndex, endIndex);
 
     const columnMapping = {
         "target": "Cảm xúc",
@@ -332,18 +337,14 @@ function renderTable() {
 
     const columns = Object.keys(globalData[0]).filter(col => col !== 'needs_processing');
 
-    // Vẽ Header
     headerRow.innerHTML = `<tr>${columns.map(col => `
         <th class="px-6 py-4 font-bold text-[11px] uppercase tracking-wider border-b border-slate-600">
             ${columnMapping[col] || col}
         </th>`).join('')}</tr>`;
 
-    // Vẽ Body (Chỉ dùng paginatedData)
     bodyRow.innerHTML = paginatedData.map(item => {
         const isDirty = item.needs_processing === true;
         const rowBg = isDirty ? 'bg-red-500/10' : 'hover:bg-blue-500/5';
-
-        // Escape dấu nháy đơn để không làm hỏng thuộc tính onclick
         const escapedText = item.text ? item.text.replace(/'/g, "\\'") : "";
 
         return `
@@ -352,20 +353,10 @@ function renderTable() {
         ${columns.map(col => {
             const value = item[col];
             const isLongText = col === 'text' || col === 'C6';
-
             let textColor = 'text-slate-400';
-
-            if (typeof value === 'number') {
-                textColor = 'font-mono text-emerald-400';
-            }
-
-            if (col.toLowerCase() === 'predicted') {
-                textColor = 'font-mono text-red-500 font-bold';
-            }
-
-            if (isDirty && isLongText) {
-                textColor = 'text-red-400 font-medium';
-            }
+            if (typeof value === 'number') textColor = 'font-mono text-emerald-400';
+            if (col.toLowerCase() === 'predicted') textColor = 'font-mono text-red-500 font-bold';
+            if (isDirty && isLongText) textColor = 'text-red-400 font-medium';
 
             return `
                 <td class="px-6 py-4 text-sm ${isLongText ? 'max-w-md truncate' : 'whitespace-nowrap'} ${textColor}">
@@ -376,7 +367,6 @@ function renderTable() {
     </tr>
 `}).join('');
 
-    // Hiển thị và vẽ nút Phân trang
     if (paginationControls) {
         paginationControls.classList.remove('hidden');
         renderPaginationControls(totalPages);
@@ -542,14 +532,23 @@ function closeModal() {
 function renderModelStudyChart(type) {
     const container = document.getElementById('table-container');
     const loading = document.getElementById('loading');
-    // 1. Lấy thêm phần tử điều khiển phân trang
     const paginationControls = document.getElementById('pagination-controls');
 
-    // 2. Ẩn loading và ẨN CẢ THANH PHÂN TRANG
     if (loading) loading.classList.add('hidden');
-    if (paginationControls) paginationControls.classList.add('hidden'); // Dòng quan trọng để xóa thanh bên dưới
+    if (paginationControls) paginationControls.classList.add('hidden'); 
     
     container.classList.remove('opacity-20');
+
+    // 1. Tạm ẩn thẻ table
+    const table = container.querySelector('table');
+    if (table) table.style.display = 'none';
+
+    // 2. DỌN DẸP SẠCH SẼ 2 TAB CÒN LẠI
+    const oldCards = document.getElementById('model-cards-wrapper');
+    if (oldCards) oldCards.remove();
+
+    const oldChart = document.getElementById('chart-study-wrapper');
+    if (oldChart) oldChart.remove();
 
     const titles = {
         'mnb': "Laplace smoothing - Multinomial Naive Bayes",
@@ -557,8 +556,9 @@ function renderModelStudyChart(type) {
         'xgb': "Max Depth - XGBoost Classifier"
     };
 
-    container.innerHTML = `
-        <div class="p-8 flex flex-col items-center bg-slate-800/30 rounded-2xl border border-slate-700">
+    // 3. Gắn ID "chart-study-wrapper" để quản lý và dùng insertAdjacentHTML thay vì innerHTML (tránh vô tình xóa thẻ table)
+    let htmlContent = `
+        <div id="chart-study-wrapper" class="p-8 flex flex-col items-center bg-slate-800/30 rounded-2xl border border-slate-700 w-full">
             <div class="flex gap-4 mb-8 bg-slate-900/50 p-1 rounded-xl border border-slate-700">
                 <button onclick="renderModelStudyChart('mnb')" class="px-4 py-2 rounded-lg text-sm ${type === 'mnb' ? 'bg-blue-600 text-white' : 'text-slate-400'}">MNB</button>
                 <button onclick="renderModelStudyChart('svm')" class="px-4 py-2 rounded-lg text-sm ${type === 'svm' ? 'bg-blue-600 text-white' : 'text-slate-400'}">SVM</button>
@@ -576,6 +576,8 @@ function renderModelStudyChart(type) {
             </div>
         </div>
     `;
+
+    container.insertAdjacentHTML('beforeend', htmlContent);
 }
 
 // Khi tải trang xong sẽ mặc định gọi Tab Xem dữ liệu thô
