@@ -5,6 +5,7 @@ let globalData = [];
 let currentPage = 1;       
 const rowsPerPage = 50;    
 let currentMode = 'raw';   
+let currentErrorModelName = '';
 
 async function changeTab(tabName) {
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
@@ -147,20 +148,22 @@ async function fetchAndRenderModelCards(endpoint) {
 async function viewModelErrors(modelName) {
     if (modelName.includes("(Chưa huấn luyện)")) return;
 
+    currentErrorModelName = modelName;
+
     const title = document.getElementById('page-title');
     const desc = document.getElementById('page-desc');
 
     title.innerText = `Phân tích lỗi: ${modelName}`;
-    desc.innerText = "Danh sách các văn bản bị thuật toán dự đoán sai trên tập Test.";
+    desc.innerText = "Danh sách các văn bản bị thuật toán dự đoán sai trên tập Test. Click vào từng dòng để xem giải thích chi tiết.";
 
     Array.from(document.getElementById('table-container').children).forEach(child => {
         if (child.tagName !== 'TABLE') child.remove();
     });
-    
+
     const container = document.getElementById('table-container');
     container.querySelector('table').style.display = 'table';
 
-    setupBackButton(true); 
+    setupBackButton(true);
 
     const loading = document.getElementById('loading');
     container.classList.add('opacity-20');
@@ -173,7 +176,7 @@ async function viewModelErrors(modelName) {
         if (result.status === "success") {
             globalData = result.data;
             currentPage = 1;
-            currentMode = 'errors'; 
+            currentMode = 'errors';
 
             setTimeout(() => {
                 renderTable();
@@ -220,19 +223,14 @@ function clearContainerUI() {
 
 function renderModelCards(data) {
     const container = document.getElementById('table-container');
-    clearContainerUI(); // Dọn dẹp
+    clearContainerUI();
 
     let htmlContent = `<div id="model-cards-wrapper" class="flex flex-col gap-8 p-6 w-full animate-fade-in">`;
 
     data.forEach(model => {
         const isTrained = !model.model_name.includes("(Chưa huấn luyện)");
-        let borderColor = model.accuracy > 85 ? 'border-emerald-500' : 'border-blue-500';
-        
-        let cmChartKey = '';
-        if (model.model_name.includes("Custom")) cmChartKey = 'mnb_custom_cm';
-        else if (model.model_name.includes("Library")) cmChartKey = 'mnb_library_cm';
-        else if (model.model_name.includes("SVM")) cmChartKey = 'svm_cm';
-        else if (model.model_name.includes("XGBoost")) cmChartKey = 'xgb_cm';
+        const borderColor = model.accuracy > 85 ? 'border-emerald-500' : 'border-blue-500';
+        const cmChartKey = getChartKeyByModelName(model.model_name);
 
         htmlContent += `
             <div class="flex flex-col lg:flex-row gap-6 bg-slate-800/40 p-6 rounded-2xl border border-slate-700 items-stretch">
@@ -265,10 +263,10 @@ function renderModelCards(data) {
                 </div>
 
                 <div class="w-full lg:w-3/4 bg-[#1e293b] rounded-xl border border-slate-700 p-4 flex flex-col items-center justify-center relative overflow-hidden">
-                    ${isTrained ? `
+                    ${isTrained && cmChartKey ? `
                         <img src="${API_BASE}/charts/${cmChartKey}?t=${new Date().getTime()}" 
                              class="w-full h-auto max-h-[450px] object-contain rounded-lg shadow-md"
-                             onerror="this.parentElement.innerHTML='<div class=\\'flex flex-col items-center justify-center h-full text-slate-500 italic\\'><i class=\\'fas fa-image text-3xl mb-2 opacity-50\\'></i><p>Chưa có ảnh biểu đồ ${cmChartKey}.png</p></div>'">
+                             onerror="this.parentElement.innerHTML='<div class=\\'flex flex-col items-center justify-center h-full text-slate-500 italic\\'><i class=\\'fas fa-image text-3xl mb-2 opacity-50\\'></i><p>Chưa có ảnh biểu đồ ${cmChartKey}</p></div>'">
                     ` : `
                         <div class="text-slate-600 italic flex flex-col items-center justify-center h-full">
                             <i class="fas fa-chart-bar text-4xl mb-3 opacity-20"></i>
@@ -285,11 +283,11 @@ function renderModelCards(data) {
 }
 
 function renderTable() {
-    clearContainerUI(); // Dọn dẹp trước
-    
+    clearContainerUI();
+
     const tableContainer = document.getElementById('table-container');
     const table = tableContainer.querySelector('table');
-    if (table) table.style.display = 'table'; // Hiển thị lại thẻ table
+    if (table) table.style.display = 'table';
 
     const headerRow = document.getElementById('table-header');
     const bodyRow = document.getElementById('table-body');
@@ -307,8 +305,13 @@ function renderTable() {
     const paginatedData = globalData.slice(startIndex, endIndex);
 
     const columnMapping = {
-        "target": "Cảm xúc", "id": "Mã ID", "date": "Thời gian",
-        "flag": "Flag", "user": "Người dùng", "text": "Nội dung Tweet"
+        "target": "Cảm xúc thật",
+        "predicted": "Dự đoán",
+        "id": "Mã ID",
+        "date": "Thời gian",
+        "flag": "Flag",
+        "user": "Người dùng",
+        "text": "Nội dung Tweet"
     };
 
     const columns = Object.keys(globalData[0]).filter(col => col !== 'needs_processing');
@@ -321,21 +324,32 @@ function renderTable() {
     bodyRow.innerHTML = paginatedData.map(item => {
         const isDirty = item.needs_processing === true;
         const rowBg = isDirty ? 'bg-red-500/10' : 'hover:bg-blue-500/5';
-        const escapedText = item.text ? item.text.replace(/'/g, "\\'") : "";
+        const textValue = String(item.text || "")
+            .replace(/\\/g, "\\\\")
+            .replace(/'/g, "\\'")
+            .replace(/\n/g, " ");
+
+        const isErrorMode = currentMode === 'errors';
+        const onclickAttr = isErrorMode
+            ? `onclick="showModelDetails('${textValue}', ${item.target}, ${item.predicted})"`
+            : "";
 
         return `
-    <tr onclick="showProbDetails('${escapedText}')" class="transition-colors group border-b border-slate-800 ${rowBg} cursor-pointer hover:bg-blue-600/10">
-        ${columns.map(col => {
-            const value = item[col];
-            const isLongText = col === 'text' || col === 'C6';
-            let textColor = 'text-slate-400';
-            if (typeof value === 'number') textColor = 'font-mono text-emerald-400';
-            if (col.toLowerCase() === 'predicted') textColor = 'font-mono text-red-500 font-bold';
-            if (isDirty && isLongText) textColor = 'text-red-400 font-medium';
+        <tr ${onclickAttr} class="transition-colors group border-b border-slate-800 ${rowBg} ${isErrorMode ? 'cursor-pointer hover:bg-blue-600/10' : ''}">
+            ${columns.map(col => {
+                const value = item[col];
+                const isLongText = col === 'text' || col === 'C6';
+                let textColor = 'text-slate-400';
 
-            return `<td class="px-6 py-4 text-sm ${isLongText ? 'max-w-md truncate' : 'whitespace-nowrap'} ${textColor}">${value}</td>`;
-        }).join('')}
-    </tr>`}).join('');
+                if (typeof value === 'number') textColor = 'font-mono text-emerald-400';
+                if (col.toLowerCase() === 'predicted') textColor = 'font-mono text-red-500 font-bold';
+                if (col.toLowerCase() === 'target') textColor = 'font-mono text-blue-400 font-bold';
+                if (isDirty && isLongText) textColor = 'text-red-400 font-medium';
+
+                return `<td class="px-6 py-4 text-sm ${isLongText ? 'max-w-md truncate' : 'whitespace-nowrap'} ${textColor}">${value}</td>`;
+            }).join('')}
+        </tr>`;
+    }).join('');
 
     if (paginationControls) {
         paginationControls.classList.remove('hidden');
@@ -362,88 +376,338 @@ function renderPaginationControls(totalPages) {
 function prevPage() { if (currentPage > 1) { currentPage--; renderTable(); } }
 function nextPage(totalPages) { if (currentPage < totalPages) { currentPage++; renderTable(); } }
 
-async function showProbDetails(text) {
-    if (currentMode !== 'errors') return;
+async function showModelDetails(text, target, predicted) {
+    if (currentMode !== 'errors' || !currentErrorModelName) return;
+
     const modal = document.getElementById('prob-modal');
     const content = document.getElementById('modal-content');
+    const titleEl = document.querySelector('#prob-modal h3');
+
     modal.classList.remove('hidden');
-    content.innerHTML = `<div class="text-center py-20"><div class="loader mb-4 mx-auto"></div><p class="text-blue-400 font-medium">Đang trích xuất dữ liệu xác suất...</p></div>`;
+    titleEl.innerText = `Chi tiết giải thích lỗi - ${currentErrorModelName}`;
+    content.innerHTML = `<div class="text-center py-20"><div class="loader mb-4 mx-auto"></div><p class="text-blue-400 font-medium">Đang phân tích chi tiết cho mô hình...</p></div>`;
 
     try {
-        const res = await fetch(`${API_BASE}/model-details?text=${encodeURIComponent(text)}`);
+        const url = `${API_BASE}/model-details?model_name=${encodeURIComponent(currentErrorModelName)}&text=${encodeURIComponent(text)}&target=${target}&predicted=${predicted}`;
+        const res = await fetch(url);
         const result = await res.json();
 
-        if (result.status === "success") {
-            const data = result.data;
-            const labels = Object.keys(data);
-            const words = data[labels[0]].word_steps.map(s => s.word);
-
-            const s0 = data["0"].final_score;
-            const s4 = data["4"].final_score;
-            const total = s0 + s4;
-            const conf0 = total > 0 ? (s0 / total) * 100 : 50;
-            const conf4 = total > 0 ? (s4 / total) * 100 : 50;
-
-            let html = `
-                <div class="mb-8 p-6 bg-slate-900/50 rounded-2xl border border-slate-700 shadow-inner">
-                    <span class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Phân tích văn bản đầu vào:</span>
-                    <h3 class="text-2xl text-white font-bold mt-1 font-serif">"${text}"</h3>
-                </div>
-                <div class="mb-8 overflow-hidden rounded-2xl border border-slate-700 bg-[#1e293b]">
-                    <table class="w-full text-left">
-                        <thead>
-                            <tr class="bg-slate-700/50 text-[11px] uppercase tracking-wider text-slate-300">
-                                <th class="px-6 py-4 font-bold">Từ khóa (Feature)</th>
-                                <th class="px-6 py-4 font-bold text-rose-400 text-center">P(word | Nhãn 0)</th>
-                                <th class="px-6 py-4 font-bold text-emerald-400 text-center">P(word | Nhãn 4)</th>
-                                <th class="px-6 py-4 font-bold text-slate-400 text-center">Ưu thế</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-700/50 text-sm">
-            `;
-
-            words.forEach((word, i) => {
-                const p0 = data["0"].word_steps[i].prob;
-                const p4 = data["4"].word_steps[i].prob;
-                const winnerColor = p0 > p4 ? "text-rose-400" : "text-emerald-400";
-                html += `
-                    <tr class="hover:bg-slate-700/20 transition-colors">
-                        <td class="px-6 py-4 text-white font-medium">${word}</td>
-                        <td class="px-6 py-4 font-mono text-center ${p0 > p4 ? 'text-rose-400 font-bold' : 'text-slate-500'}">${p0.toFixed(6)}</td>
-                        <td class="px-6 py-4 font-mono text-center ${p4 > p0 ? 'text-emerald-400 font-bold' : 'text-slate-500'}">${p4.toFixed(6)}</td>
-                        <td class="px-6 py-4 text-center"><span class="px-2 py-1 rounded text-[10px] font-bold bg-slate-700/50 ${winnerColor}">${p0 > p4 ? "Nhãn 0" : "Nhãn 4"}</span></td>
-                    </tr>`;
-            });
-            html += `</tbody></table></div>`;
-
-            html += `
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="relative p-6 rounded-2xl border ${s0 > s4 ? 'border-rose-500 bg-rose-500/10' : 'border-slate-700 bg-slate-800/40'}">
-                        ${s0 > s4 ? '<span class="absolute -top-3 left-6 px-3 py-1 bg-rose-500 text-white text-[10px] font-black rounded-full uppercase">Mô hình chọn</span>' : ''}
-                        <div class="flex justify-between items-center mb-4">
-                            <div><h4 class="text-rose-400 font-black text-xs uppercase tracking-widest">Tiêu cực (Label 0)</h4></div>
-                            <span class="text-white font-mono font-bold text-xl">${conf0.toFixed(2)}%</span>
-                        </div>
-                        <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden mb-2"><div class="bg-rose-500 h-full transition-all duration-500" style="width: ${conf0}%"></div></div>
-                    </div>
-                    <div class="relative p-6 rounded-2xl border ${s4 > s0 ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-700 bg-slate-800/40'}">
-                        ${s4 > s0 ? '<span class="absolute -top-3 left-6 px-3 py-1 bg-emerald-500 text-white text-[10px] font-black rounded-full uppercase">Mô hình chọn</span>' : ''}
-                        <div class="flex justify-between items-center mb-4">
-                            <div><h4 class="text-emerald-400 font-black text-xs uppercase tracking-widest">Tích cực (Label 4)</h4></div>
-                            <span class="text-white font-mono font-bold text-xl">${conf4.toFixed(2)}%</span>
-                        </div>
-                        <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden mb-2"><div class="bg-emerald-500 h-full transition-all duration-500" style="width: ${conf4}%"></div></div>
-                    </div>
-                </div>`;
-            content.innerHTML = html;
+        if (result.status !== "success") {
+            content.innerHTML = `<div class="p-10 text-center text-rose-400 font-bold">${result.message || 'Không lấy được chi tiết mô hình.'}</div>`;
+            return;
         }
+
+        const data = result.data;
+
+        if (data.detail_type === "mnb_custom") {
+            content.innerHTML = renderMnbCustomDetails(data);
+            return;
+        }
+
+        if (data.detail_type === "mnb_library") {
+            content.innerHTML = renderMnbLibraryDetails(data);
+            return;
+        }
+
+        if (data.detail_type === "svm_linear") {
+            content.innerHTML = renderSvmDetails(data);
+            return;
+        }
+
+        if (data.detail_type === "xgb_generic") {
+            content.innerHTML = renderXgbGenericDetails(data);
+            return;
+        }
+
+        content.innerHTML = renderUnsupportedDetails(data);
     } catch (error) {
+        console.error(error);
         content.innerHTML = `<div class="p-10 text-center text-rose-400 font-bold">Lỗi kết nối Backend!</div>`;
     }
 }
 
-function closeModal() { document.getElementById('prob-modal').classList.add('hidden'); }
+function renderHeaderInfoBox(data) {
+    return `
+        <div class="mb-8 p-6 bg-slate-900/50 rounded-2xl border border-slate-700 shadow-inner">
+            <span class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Văn bản đang phân tích</span>
+            <h3 class="text-2xl text-white font-bold mt-2 font-serif break-words">"${data.raw_text || ''}"</h3>
+            <div class="mt-4 flex flex-wrap gap-3">
+                ${data.actual_target !== null && data.actual_target !== undefined ? `
+                    <span class="px-3 py-1 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/40 text-sm font-bold">
+                        Nhãn thật: ${data.actual_target}
+                    </span>` : ''}
+                ${data.predicted_target !== null && data.predicted_target !== undefined ? `
+                    <span class="px-3 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 text-sm font-bold">
+                        Dự đoán: ${data.predicted_target}
+                    </span>` : ''}
+            </div>
+        </div>
+    `;
+}
 
+function renderMnbCustomDetails(data) {
+    const labels = Object.keys(data.classes);
+    const words = data.classes[labels[0]]?.word_steps?.map(s => s.word) || [];
+
+    const s0 = data.classes["0"]?.final_score ?? 0;
+    const s4 = data.classes["4"]?.final_score ?? 0;
+    const total = s0 + s4;
+    const conf0 = total > 0 ? (s0 / total) * 100 : 50;
+    const conf4 = total > 0 ? (s4 / total) * 100 : 50;
+
+    let html = renderHeaderInfoBox(data);
+
+    html += `
+        <div class="mb-8 overflow-hidden rounded-2xl border border-slate-700 bg-[#1e293b]">
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="bg-slate-700/50 text-[11px] uppercase tracking-wider text-slate-300">
+                        <th class="px-6 py-4 font-bold">Từ khóa</th>
+                        <th class="px-6 py-4 font-bold text-center text-rose-400">P(word | 0)</th>
+                        <th class="px-6 py-4 font-bold text-center text-emerald-400">P(word | 4)</th>
+                        <th class="px-6 py-4 font-bold text-center text-slate-400">Ưu thế</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/50 text-sm">
+    `;
+
+    words.forEach((word, i) => {
+        const p0 = data.classes["0"].word_steps[i].prob;
+        const p4 = data.classes["4"].word_steps[i].prob;
+        const winnerColor = p0 > p4 ? "text-rose-400" : "text-emerald-400";
+
+        html += `
+            <tr class="hover:bg-slate-700/20 transition-colors">
+                <td class="px-6 py-4 text-white font-medium">${word}</td>
+                <td class="px-6 py-4 font-mono text-center ${p0 > p4 ? 'text-rose-400 font-bold' : 'text-slate-500'}">${p0.toFixed(8)}</td>
+                <td class="px-6 py-4 font-mono text-center ${p4 > p0 ? 'text-emerald-400 font-bold' : 'text-slate-500'}">${p4.toFixed(8)}</td>
+                <td class="px-6 py-4 text-center"><span class="px-2 py-1 rounded text-[10px] font-bold bg-slate-700/50 ${winnerColor}">${p0 > p4 ? "Nhãn 0" : "Nhãn 4"}</span></td>
+            </tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+
+    html += `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="relative p-6 rounded-2xl border ${s0 > s4 ? 'border-rose-500 bg-rose-500/10' : 'border-slate-700 bg-slate-800/40'}">
+                <div class="flex justify-between items-center mb-4">
+                    <h4 class="text-rose-400 font-black text-xs uppercase tracking-widest">Tiêu cực (0)</h4>
+                    <span class="text-white font-mono font-bold text-xl">${conf0.toFixed(2)}%</span>
+                </div>
+                <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden mb-2"><div class="bg-rose-500 h-full" style="width:${conf0}%"></div></div>
+            </div>
+            <div class="relative p-6 rounded-2xl border ${s4 > s0 ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-700 bg-slate-800/40'}">
+                <div class="flex justify-between items-center mb-4">
+                    <h4 class="text-emerald-400 font-black text-xs uppercase tracking-widest">Tích cực (4)</h4>
+                    <span class="text-white font-mono font-bold text-xl">${conf4.toFixed(2)}%</span>
+                </div>
+                <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden mb-2"><div class="bg-emerald-500 h-full" style="width:${conf4}%"></div></div>
+            </div>
+        </div>
+    `;
+
+    return html;
+}
+
+function renderMnbLibraryDetails(data) {
+    const class0 = data.classes["0"];
+    const class4 = data.classes["4"];
+
+    const p0 = (class0?.normalized_prob ?? 0) * 100;
+    const p4 = (class4?.normalized_prob ?? 0) * 100;
+
+    const rows0 = class0?.word_steps || [];
+    const rows4 = class4?.word_steps || [];
+    const maxLen = Math.max(rows0.length, rows4.length);
+
+    let html = renderHeaderInfoBox(data);
+
+    html += `
+        <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="p-6 rounded-2xl border border-rose-500/30 bg-rose-500/10">
+                <div class="flex justify-between items-center">
+                    <h4 class="text-rose-400 font-black text-xs uppercase tracking-widest">Xác suất chuẩn hóa - Label 0</h4>
+                    <span class="text-white font-mono font-bold text-xl">${p0.toFixed(2)}%</span>
+                </div>
+            </div>
+            <div class="p-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10">
+                <div class="flex justify-between items-center">
+                    <h4 class="text-emerald-400 font-black text-xs uppercase tracking-widest">Xác suất chuẩn hóa - Label 4</h4>
+                    <span class="text-white font-mono font-bold text-xl">${p4.toFixed(2)}%</span>
+                </div>
+            </div>
+        </div>
+    `;
+
+    html += `
+        <div class="mb-8 overflow-hidden rounded-2xl border border-slate-700 bg-[#1e293b]">
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="bg-slate-700/50 text-[11px] uppercase tracking-wider text-slate-300">
+                        <th class="px-6 py-4 font-bold">Từ</th>
+                        <th class="px-6 py-4 font-bold text-center">Count</th>
+                        <th class="px-6 py-4 font-bold text-center text-rose-400">log P(word|0)</th>
+                        <th class="px-6 py-4 font-bold text-center text-emerald-400">log P(word|4)</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/50 text-sm">
+    `;
+
+    for (let i = 0; i < maxLen; i++) {
+        const r0 = rows0[i];
+        const r4 = rows4[i];
+        const word = r0?.word || r4?.word || "-";
+        const count = r0?.count ?? r4?.count ?? 0;
+        const lp0 = r0?.log_prob ?? 0;
+        const lp4 = r4?.log_prob ?? 0;
+
+        html += `
+            <tr class="hover:bg-slate-700/20 transition-colors">
+                <td class="px-6 py-4 text-white font-medium">${word}</td>
+                <td class="px-6 py-4 text-center font-mono text-slate-300">${count}</td>
+                <td class="px-6 py-4 text-center font-mono text-rose-400">${lp0.toFixed(6)}</td>
+                <td class="px-6 py-4 text-center font-mono text-emerald-400">${lp4.toFixed(6)}</td>
+            </tr>
+        `;
+    }
+
+    html += `</tbody></table></div>`;
+    return html;
+}
+
+function renderSvmDetails(data) {
+    const neg = (data.pseudo_prob_neg ?? 0.5) * 100;
+    const pos = (data.pseudo_prob_pos ?? 0.5) * 100;
+
+    let html = renderHeaderInfoBox(data);
+
+    html += `
+        <div class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="p-6 rounded-2xl border border-blue-500/30 bg-blue-500/10">
+                <p class="text-blue-300 text-xs uppercase tracking-widest font-black mb-2">Bias (b)</p>
+                <p class="text-white font-mono text-2xl font-bold">${Number(data.bias || 0).toFixed(6)}</p>
+            </div>
+            <div class="p-6 rounded-2xl border border-amber-500/30 bg-amber-500/10">
+                <p class="text-amber-300 text-xs uppercase tracking-widest font-black mb-2">Decision score</p>
+                <p class="text-white font-mono text-2xl font-bold">${Number(data.decision_score || 0).toFixed(6)}</p>
+            </div>
+            <div class="p-6 rounded-2xl border border-violet-500/30 bg-violet-500/10">
+                <p class="text-violet-300 text-xs uppercase tracking-widest font-black mb-2">Số đặc trưng kích hoạt</p>
+                <p class="text-white font-mono text-2xl font-bold">${data.active_features_count || 0}</p>
+            </div>
+        </div>
+    `;
+
+    html += `
+        <div class="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="p-6 rounded-2xl border border-rose-500/30 bg-rose-500/10">
+                <div class="flex justify-between items-center mb-3">
+                    <h4 class="text-rose-400 font-black text-xs uppercase tracking-widest">Nghiêng về label 0</h4>
+                    <span class="text-white font-mono font-bold text-xl">${neg.toFixed(2)}%</span>
+                </div>
+                <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden"><div class="bg-rose-500 h-full" style="width:${neg}%"></div></div>
+            </div>
+            <div class="p-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10">
+                <div class="flex justify-between items-center mb-3">
+                    <h4 class="text-emerald-400 font-black text-xs uppercase tracking-widest">Nghiêng về label 4</h4>
+                    <span class="text-white font-mono font-bold text-xl">${pos.toFixed(2)}%</span>
+                </div>
+                <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden"><div class="bg-emerald-500 h-full" style="width:${pos}%"></div></div>
+            </div>
+        </div>
+    `;
+
+    html += `
+        <div class="mb-3">
+            <h4 class="text-lg text-white font-bold mb-2">Bảng đóng góp đặc trưng</h4>
+            <p class="text-slate-400 text-sm">Score tuyến tính được tính gần đúng theo công thức: <span class="font-mono text-blue-300">score = Σ(tfidf × weight) + bias</span></p>
+        </div>
+        <div class="overflow-hidden rounded-2xl border border-slate-700 bg-[#1e293b]">
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="bg-slate-700/50 text-[11px] uppercase tracking-wider text-slate-300">
+                        <th class="px-6 py-4 font-bold">Feature</th>
+                        <th class="px-6 py-4 font-bold text-center">TF-IDF</th>
+                        <th class="px-6 py-4 font-bold text-center">Weight</th>
+                        <th class="px-6 py-4 font-bold text-center">Contribution</th>
+                        <th class="px-6 py-4 font-bold text-center">Ý nghĩa</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/50 text-sm">
+                    ${(data.feature_steps || []).map(row => `
+                        <tr class="hover:bg-slate-700/20 transition-colors">
+                            <td class="px-6 py-4 text-white font-medium break-all">${row.feature}</td>
+                            <td class="px-6 py-4 text-center font-mono text-slate-300">${Number(row.tfidf).toFixed(6)}</td>
+                            <td class="px-6 py-4 text-center font-mono ${row.weight >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${Number(row.weight).toFixed(6)}</td>
+                            <td class="px-6 py-4 text-center font-mono ${row.contribution >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}">${Number(row.contribution).toFixed(6)}</td>
+                            <td class="px-6 py-4 text-center text-slate-300">${row.direction}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    return html;
+}
+
+function renderXgbGenericDetails(data) {
+    const probNeg = data.prob_neg != null ? (data.prob_neg * 100).toFixed(2) : "N/A";
+    const probPos = data.prob_pos != null ? (data.prob_pos * 100).toFixed(2) : "N/A";
+
+    let html = renderHeaderInfoBox(data);
+
+    html += `
+        <div class="mb-6 p-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-200">
+            <p class="font-bold mb-1">Lưu ý</p>
+            <p class="text-sm">${data.note || 'Chi tiết XGBoost hiện đang ở mức giải thích gần đúng.'}</p>
+        </div>
+        <div class="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="p-6 rounded-2xl border border-rose-500/30 bg-rose-500/10">
+                <h4 class="text-rose-400 font-black text-xs uppercase tracking-widest mb-2">Ước lượng nghiêng về 0</h4>
+                <p class="text-white font-mono text-2xl font-bold">${probNeg}${probNeg !== "N/A" ? "%" : ""}</p>
+            </div>
+            <div class="p-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10">
+                <h4 class="text-emerald-400 font-black text-xs uppercase tracking-widest mb-2">Ước lượng nghiêng về 4</h4>
+                <p class="text-white font-mono text-2xl font-bold">${probPos}${probPos !== "N/A" ? "%" : ""}</p>
+            </div>
+        </div>
+        <div class="overflow-hidden rounded-2xl border border-slate-700 bg-[#1e293b]">
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="bg-slate-700/50 text-[11px] uppercase tracking-wider text-slate-300">
+                        <th class="px-6 py-4 font-bold">Feature</th>
+                        <th class="px-6 py-4 font-bold text-center">Value</th>
+                        <th class="px-6 py-4 font-bold text-center">Importance</th>
+                        <th class="px-6 py-4 font-bold text-center">Proxy</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/50 text-sm">
+                    ${(data.feature_steps || []).map(row => `
+                        <tr class="hover:bg-slate-700/20 transition-colors">
+                            <td class="px-6 py-4 text-white font-medium break-all">${row.feature}</td>
+                            <td class="px-6 py-4 text-center font-mono text-slate-300">${Number(row.value).toFixed(6)}</td>
+                            <td class="px-6 py-4 text-center font-mono text-blue-300">${Number(row.importance).toFixed(6)}</td>
+                            <td class="px-6 py-4 text-center font-mono text-amber-300">${Number(row.proxy_contribution).toFixed(6)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    return html;
+}
+
+function renderUnsupportedDetails(data) {
+    return `
+        <div class="p-6 rounded-2xl border border-slate-700 bg-slate-900/50">
+            <h4 class="text-white font-bold text-xl mb-3">Chưa có giải thích chi tiết</h4>
+            <p class="text-slate-300">${data.message || 'Model này hiện chưa có phần giải thích chi tiết.'}</p>
+        </div>
+    `;
+}
+function closeModal() { document.getElementById('prob-modal').classList.add('hidden'); }
 function renderModelStudyChart(type) {
     const container = document.getElementById('table-container');
     const loading = document.getElementById('loading');
@@ -610,6 +874,19 @@ async function submitTestText() {
     } catch (error) {
         resultsContainer.innerHTML = `<div class="p-6 bg-rose-500/10 border border-rose-500/50 text-rose-400 rounded-xl text-center font-bold">Lỗi kết nối tới Server. Hãy đảm bảo API đang chạy!</div>`;
     }
+}
+
+function getChartKeyByModelName(modelName) {
+    const mapping = {
+        "Multinomial Naive Bayes (Custom)": "mnb_custom_cm",
+        "Multinomial Naive Bayes (Library)": "mnb_library_cm",
+        "Linear SVM (One-Sample Custom)": "svm_one_custom_cm",
+        "Linear SVM (Full-Sample Custom)": "svm_full_custom_cm",
+        "Linear SVM (Library)": "svm_library_cm",
+        "XGBoost (Custom)": "xgb_custom_cm",
+        "XGBoost (Library)": "xgb_library_cm",
+    };
+    return mapping[modelName] || "";
 }
 
 window.onload = () => changeTab('view-data');
