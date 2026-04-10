@@ -1,10 +1,10 @@
 const API_BASE = "http://127.0.0.1:8000/api";
 
 // CÁC BIẾN QUẢN LÝ PHÂN TRANG
-let globalData = [];       
-let currentPage = 1;       
-const rowsPerPage = 50;    
-let currentMode = 'raw';   
+let globalData = [];
+let currentPage = 1;
+const rowsPerPage = 50;
+let currentMode = 'raw';
 let currentErrorModelName = '';
 
 async function changeTab(tabName) {
@@ -18,46 +18,45 @@ async function changeTab(tabName) {
     if (datasetControls) datasetControls.classList.add('hidden');
 
     if (tabName === 'view-data') {
+        currentMode = 'raw';
         title.innerText = "Dữ liệu thô";
         desc.innerText = "Dữ liệu thô từ hệ thống (file csv).";
         fetchAndRenderTable("/preview-data");
 
     } else if (tabName === 'view-dataset') {
-        currentMode = 'raw'; 
+        currentMode = 'raw';
         title.innerText = "Xem các tập dữ liệu";
         desc.innerText = "Dữ liệu đã được chia thành Train: 80% | Validation: 10% của Train | Test: 20%";
-        if (datasetControls) datasetControls.classList.remove('hidden'); 
-        loadSubDataset('train'); 
+        if (datasetControls) datasetControls.classList.remove('hidden');
+        loadSubDataset('train');
 
     } else if (tabName === 'view-clean-dataset') {
-        currentMode = 'clean'; 
+        currentMode = 'clean';
         title.innerText = "Dữ liệu đưa vào huấn luyện";
         desc.innerText = "Dữ liệu đã qua bước Tiền xử lý: Xóa URL, mention, số, ký tự đặc biệt, emoji.";
         if (datasetControls) datasetControls.classList.remove('hidden');
         loadSubDataset('train');
 
-    } else if (tabName === 'process-outliers') {
-        title.innerText = "Dữ liệu đã Xử lý";
-        desc.innerText = "Kết quả sau khi loại bỏ nhiễu và chuẩn hóa.";
-        fetchAndRenderTable("/process-outliers");
-
     } else if (tabName === 'train-models') {
+        currentMode = 'models';
         title.innerText = "Hiệu suất Huấn luyện Mô hình";
-        desc.innerText = "So sánh tổng quan 3 thuật toán: Multinomial NB, SVM và XGBoost.";
+        desc.innerText = "So sánh tổng quan các thuật toán và confusion matrix tương ứng.";
         if (datasetControls) datasetControls.classList.add('hidden');
         fetchAndRenderModelCards("/train-models");
 
     } else if (tabName === 'visualize-params') {
+        currentMode = 'chart';
         title.innerText = "Trực quan hóa tham số mô hình";
         desc.innerText = "Phân tích sự biến thiên của Accuracy dựa trên các tham số đặc trưng.";
         if (datasetControls) datasetControls.classList.add('hidden');
         renderModelStudyChart('mnb');
-        
+
     } else if (tabName === 'test-text') {
+        currentMode = 'test_text';
         title.innerText = "Công cụ AI Phân tích Cảm xúc";
         desc.innerText = "Hệ thống sẽ tiền xử lý dữ liệu và yêu cầu 6 AI Agent thực hiện bỏ phiếu chéo.";
         if (datasetControls) datasetControls.classList.add('hidden');
-        renderTestTextUI(); 
+        renderTestTextUI();
     }
 }
 
@@ -65,11 +64,9 @@ async function loadSubDataset(setType) {
     ['train', 'val', 'test'].forEach(id => {
         const btn = document.getElementById(`btn-sub-${id}`);
         if (btn) {
-            if (id === setType) {
-                btn.className = "px-5 py-2 bg-blue-600 text-white rounded-lg font-medium transition-colors shadow-lg";
-            } else {
-                btn.className = "px-5 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors";
-            }
+            btn.className = id === setType
+                ? "px-5 py-2 bg-blue-600 text-white rounded-lg font-medium transition-colors shadow-lg"
+                : "px-5 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors";
         }
     });
 
@@ -93,7 +90,7 @@ async function fetchAndRenderTable(endpoint) {
 
     container.classList.add('opacity-20');
     loading.classList.remove('hidden');
-    if (paginationControls) paginationControls.classList.add('hidden'); 
+    if (paginationControls) paginationControls.classList.add('hidden');
 
     try {
         const res = await fetch(`${API_BASE}${endpoint}`);
@@ -104,18 +101,19 @@ async function fetchAndRenderTable(endpoint) {
             currentPage = 1;
 
             setTimeout(() => {
-                renderTable(); 
+                renderTable();
                 loading.classList.add('hidden');
-                container.classList.remove('opacity-100'); 
+                container.classList.remove('opacity-100');
                 container.classList.remove('opacity-20');
             }, 300);
 
-            return result; 
+            return result;
         }
     } catch (error) {
         console.error("Lỗi kết nối:", error);
         loading.innerHTML = '<p class="text-red-500">Lỗi: Không thể kết nối tới Python Backend!</p>';
     }
+
     return null;
 }
 
@@ -149,6 +147,7 @@ async function viewModelErrors(modelName) {
     if (modelName.includes("(Chưa huấn luyện)")) return;
 
     currentErrorModelName = modelName;
+    currentMode = 'errors';
 
     const title = document.getElementById('page-title');
     const desc = document.getElementById('page-desc');
@@ -161,7 +160,8 @@ async function viewModelErrors(modelName) {
     });
 
     const container = document.getElementById('table-container');
-    container.querySelector('table').style.display = 'table';
+    const table = container.querySelector('table');
+    if (table) table.style.display = 'table';
 
     setupBackButton(true);
 
@@ -176,13 +176,14 @@ async function viewModelErrors(modelName) {
         if (result.status === "success") {
             globalData = result.data;
             currentPage = 1;
-            currentMode = 'errors';
 
             setTimeout(() => {
                 renderTable();
                 loading.classList.add('hidden');
                 container.classList.remove('opacity-20');
             }, 300);
+        } else {
+            loading.innerHTML = `<p class="text-red-500">${result.message || 'Lỗi khi tải dữ liệu phân tích!'}</p>`;
         }
     } catch (error) {
         console.error("Lỗi:", error);
@@ -199,26 +200,37 @@ function setupBackButton(show) {
         backBtn.innerHTML = '<i class="fas fa-arrow-left mr-2"></i> Quay lại So sánh Mô hình';
         backBtn.onclick = () => {
             setupBackButton(false);
-            changeTab('train-models'); 
+            changeTab('train-models');
         };
         const wrapper = document.querySelector('.table-wrapper');
-        wrapper.parentNode.insertBefore(backBtn, wrapper);
+        if (wrapper && wrapper.parentNode) {
+            wrapper.parentNode.insertBefore(backBtn, wrapper);
+        }
     }
     backBtn.style.display = show ? 'inline-block' : 'none';
 }
 
-// =========================================================
-// HÀM QUÉT SẠCH CONTAINER (FIX LỖI CHỒNG LẤN GIAO DIỆN)
-// =========================================================
 function clearContainerUI() {
     const container = document.getElementById('table-container');
     const table = container.querySelector('table');
-    if (table) table.style.display = 'none'; // Ẩn bảng
-    
-    // Xóa SẠCH tất cả mọi thứ (Biểu đồ, Model Card, Input Nhập liệu...) TRỪ cái bảng
+    if (table) table.style.display = 'none';
+
     Array.from(container.children).forEach(child => {
         if (child.tagName !== 'TABLE') child.remove();
     });
+}
+
+function getChartKeyByModelName(modelName) {
+    const mapping = {
+        "Multinomial Naive Bayes (Custom)": "mnb_custom_cm",
+        "Multinomial Naive Bayes (Library)": "mnb_library_cm",
+        "Linear SVM (One-Sample Custom)": "svm_one_custom_cm",
+        "Linear SVM (Full-Sample Custom)": "svm_full_custom_cm",
+        "Linear SVM (Library)": "svm_library_cm",
+        "XGBoost (Custom)": "xgb_custom_cm",
+        "XGBoost (Library)": "xgb_library_cm",
+    };
+    return mapping[modelName] || "";
 }
 
 function renderModelCards(data) {
@@ -229,12 +241,12 @@ function renderModelCards(data) {
 
     data.forEach(model => {
         const isTrained = !model.model_name.includes("(Chưa huấn luyện)");
-        const borderColor = model.accuracy > 85 ? 'border-emerald-500' : 'border-blue-500';
+        const borderColor = Number(model.accuracy) > 85 ? 'border-emerald-500' : 'border-blue-500';
         const cmChartKey = getChartKeyByModelName(model.model_name);
 
         htmlContent += `
             <div class="flex flex-col lg:flex-row gap-6 bg-slate-800/40 p-6 rounded-2xl border border-slate-700 items-stretch">
-                <div onclick="viewModelErrors('${model.model_name}')" 
+                <div onclick="viewModelErrors('${String(model.model_name).replace(/'/g, "\\'")}')" 
                      class="w-full lg:w-1/4 bg-slate-800 rounded-xl p-6 border-t-4 ${borderColor} shadow-lg hover:transform hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between">
                     <h3 class="text-xl font-bold text-white mb-4 text-center">${model.model_name}</h3>
                     <div class="space-y-4">
@@ -244,21 +256,26 @@ function renderModelCards(data) {
                         </div>
                         <div class="flex justify-between items-center bg-emerald-900/20 p-3 rounded-lg border border-emerald-500/20">
                             <span class="text-emerald-400 text-sm"><i class="fas fa-check-circle mr-2"></i>Đúng:</span>
-                            <span class="text-emerald-400 font-mono font-bold">${model.correct_predictions.toLocaleString()}</span>
+                            <span class="text-emerald-400 font-mono font-bold">${Number(model.correct_predictions || 0).toLocaleString()}</span>
                         </div>
                         <div class="flex justify-between items-center bg-rose-900/20 p-3 rounded-lg border border-rose-500/20">
                             <span class="text-rose-400 text-sm"><i class="fas fa-times-circle mr-2"></i>Sai:</span>
-                            <span class="text-rose-400 font-mono font-bold">${model.incorrect_predictions.toLocaleString()}</span>
+                            <span class="text-rose-400 font-mono font-bold">${Number(model.incorrect_predictions || 0).toLocaleString()}</span>
                         </div>
+                        ${model.f1_score !== undefined ? `
+                        <div class="flex justify-between items-center bg-amber-900/20 p-3 rounded-lg border border-amber-500/20">
+                            <span class="text-amber-400 text-sm"><i class="fas fa-scale-balanced mr-2"></i>F1-score:</span>
+                            <span class="text-amber-400 font-mono font-bold">${model.f1_score}</span>
+                        </div>` : ''}
                     </div>
                     <div class="mt-6 pt-4 border-t border-slate-700 text-center">
-                        <p class="text-slate-400 text-sm mb-1">Hiệu suất (Accuracy)</p>
+                        <p class="text-slate-400 text-sm mb-1">Accuracy</p>
                         <p class="text-4xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
                             ${model.accuracy}%
                         </p>
                     </div>
                     <div class="text-center mt-3">
-                        <span class="text-xs text-slate-500 italic"><i class="fas fa-hand-pointer mr-1"></i>Click để xem chi tiết lỗi</span>
+                        <span class="text-xs text-slate-500 italic"><i class="fas fa-hand-pointer mr-1"></i>Click để xem mẫu lỗi + lý do dự đoán</span>
                     </div>
                 </div>
 
@@ -324,9 +341,11 @@ function renderTable() {
     bodyRow.innerHTML = paginatedData.map(item => {
         const isDirty = item.needs_processing === true;
         const rowBg = isDirty ? 'bg-red-500/10' : 'hover:bg-blue-500/5';
+
         const textValue = String(item.text || "")
             .replace(/\\/g, "\\\\")
             .replace(/'/g, "\\'")
+            .replace(/\r/g, " ")
             .replace(/\n/g, " ");
 
         const isErrorMode = currentMode === 'errors';
@@ -373,8 +392,19 @@ function renderPaginationControls(totalPages) {
     `;
 }
 
-function prevPage() { if (currentPage > 1) { currentPage--; renderTable(); } }
-function nextPage(totalPages) { if (currentPage < totalPages) { currentPage++; renderTable(); } }
+function prevPage() {
+    if (currentPage > 1) {
+        currentPage--;
+        renderTable();
+    }
+}
+
+function nextPage(totalPages) {
+    if (currentPage < totalPages) {
+        currentPage++;
+        renderTable();
+    }
+}
 
 async function showModelDetails(text, target, predicted) {
     if (currentMode !== 'errors' || !currentErrorModelName) return;
@@ -397,7 +427,7 @@ async function showModelDetails(text, target, predicted) {
             return;
         }
 
-        const data = result.data;
+        const data = result.data || {};
 
         if (data.detail_type === "mnb_custom") {
             content.innerHTML = renderMnbCustomDetails(data);
@@ -411,6 +441,16 @@ async function showModelDetails(text, target, predicted) {
 
         if (data.detail_type === "svm_linear") {
             content.innerHTML = renderSvmDetails(data);
+            return;
+        }
+
+        if (data.detail_type === "xgb_custom" || data.model_type === "xgb_custom") {
+            content.innerHTML = renderXGBDetails(data, true);
+            return;
+        }
+
+        if (data.detail_type === "xgb_library" || data.model_type === "xgb_library") {
+            content.innerHTML = renderXGBDetails(data, false);
             return;
         }
 
@@ -430,7 +470,7 @@ function renderHeaderInfoBox(data) {
     return `
         <div class="mb-8 p-6 bg-slate-900/50 rounded-2xl border border-slate-700 shadow-inner">
             <span class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Văn bản đang phân tích</span>
-            <h3 class="text-2xl text-white font-bold mt-2 font-serif break-words">"${data.raw_text || ''}"</h3>
+            <h3 class="text-2xl text-white font-bold mt-2 font-serif break-words">"${data.raw_text || data.input_text || ''}"</h3>
             <div class="mt-4 flex flex-wrap gap-3">
                 ${data.actual_target !== null && data.actual_target !== undefined ? `
                     <span class="px-3 py-1 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/40 text-sm font-bold">
@@ -445,12 +485,32 @@ function renderHeaderInfoBox(data) {
     `;
 }
 
-function renderMnbCustomDetails(data) {
-    const labels = Object.keys(data.classes);
-    const words = data.classes[labels[0]]?.word_steps?.map(s => s.word) || [];
+function renderProbabilityCards(probabilities, predictedLabel) {
+    const entries = Object.entries(probabilities || {});
+    return `
+        <div class="grid grid-cols-1 md:grid-cols-${Math.max(entries.length, 2)} gap-4">
+            ${entries.map(([label, prob]) => `
+                <div class="relative p-6 rounded-2xl border ${String(label) === String(predictedLabel) ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-700 bg-slate-800/40'}">
+                    ${String(label) === String(predictedLabel) ? '<span class="absolute -top-3 left-6 px-3 py-1 bg-emerald-500 text-white text-[10px] font-black rounded-full uppercase">Mô hình chọn</span>' : ''}
+                    <div class="flex justify-between items-center mb-4">
+                        <h4 class="text-white font-black text-xs uppercase tracking-widest">Nhãn ${label}</h4>
+                        <span class="text-white font-mono font-bold text-xl">${(Number(prob) * 100).toFixed(2)}%</span>
+                    </div>
+                    <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+                        <div class="bg-emerald-500 h-full transition-all duration-500" style="width: ${Number(prob) * 100}%"></div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
 
-    const s0 = data.classes["0"]?.final_score ?? 0;
-    const s4 = data.classes["4"]?.final_score ?? 0;
+function renderMnbCustomDetails(data) {
+    const labels = Object.keys(data.classes || {});
+    const words = data.classes?.[labels[0]]?.word_steps?.map(s => s.word) || [];
+
+    const s0 = data.classes?.["0"]?.final_score ?? 0;
+    const s4 = data.classes?.["4"]?.final_score ?? 0;
     const total = s0 + s4;
     const conf0 = total > 0 ? (s0 / total) * 100 : 50;
     const conf4 = total > 0 ? (s4 / total) * 100 : 50;
@@ -479,8 +539,8 @@ function renderMnbCustomDetails(data) {
         html += `
             <tr class="hover:bg-slate-700/20 transition-colors">
                 <td class="px-6 py-4 text-white font-medium">${word}</td>
-                <td class="px-6 py-4 font-mono text-center ${p0 > p4 ? 'text-rose-400 font-bold' : 'text-slate-500'}">${p0.toFixed(8)}</td>
-                <td class="px-6 py-4 font-mono text-center ${p4 > p0 ? 'text-emerald-400 font-bold' : 'text-slate-500'}">${p4.toFixed(8)}</td>
+                <td class="px-6 py-4 font-mono text-center ${p0 > p4 ? 'text-rose-400 font-bold' : 'text-slate-500'}">${Number(p0).toFixed(8)}</td>
+                <td class="px-6 py-4 font-mono text-center ${p4 > p0 ? 'text-emerald-400 font-bold' : 'text-slate-500'}">${Number(p4).toFixed(8)}</td>
                 <td class="px-6 py-4 text-center"><span class="px-2 py-1 rounded text-[10px] font-bold bg-slate-700/50 ${winnerColor}">${p0 > p4 ? "Nhãn 0" : "Nhãn 4"}</span></td>
             </tr>`;
     });
@@ -565,8 +625,8 @@ function renderMnbLibraryDetails(data) {
             <tr class="hover:bg-slate-700/20 transition-colors">
                 <td class="px-6 py-4 text-white font-medium">${word}</td>
                 <td class="px-6 py-4 text-center font-mono text-slate-300">${count}</td>
-                <td class="px-6 py-4 text-center font-mono text-rose-400">${lp0.toFixed(6)}</td>
-                <td class="px-6 py-4 text-center font-mono text-emerald-400">${lp4.toFixed(6)}</td>
+                <td class="px-6 py-4 text-center font-mono text-rose-400">${Number(lp0).toFixed(6)}</td>
+                <td class="px-6 py-4 text-center font-mono text-emerald-400">${Number(lp4).toFixed(6)}</td>
             </tr>
         `;
     }
@@ -651,6 +711,155 @@ function renderSvmDetails(data) {
     return html;
 }
 
+function renderXGBDetails(data, isCustom) {
+    const summary = data.training_summary || {};
+    const topFeatures = data.top_features || [];
+    const topTrees = data.top_trees || [];
+    const topGlobal = data.global_feature_gain || [];
+
+    let html = `
+        <div class="mb-8 p-6 bg-slate-900/50 rounded-2xl border border-slate-700 shadow-inner">
+            <span class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Văn bản đang phân tích</span>
+            <h3 class="text-2xl text-white font-bold mt-1 font-serif">"${data.input_text || data.raw_text || ''}"</h3>
+            <p class="text-slate-400 mt-3">${data.decision_reason || ''}</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div class="p-6 rounded-2xl border border-slate-700 bg-slate-800/40">
+                <h4 class="text-blue-400 font-black uppercase tracking-wider text-sm mb-4">Kết quả cuối cùng</h4>
+                <div class="space-y-3 text-sm">
+                    <div class="flex justify-between"><span class="text-slate-400">Nhãn dự đoán</span><span class="text-white font-bold">${data.predicted_label ?? data.predicted_target ?? '-'}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-400">Threshold</span><span class="text-white font-mono">${data.threshold !== undefined ? Number(data.threshold).toFixed(4) : '-'}</span></div>
+                    ${data.raw_score_logit !== undefined ? `<div class="flex justify-between"><span class="text-slate-400">Raw score (logit)</span><span class="text-white font-mono">${Number(data.raw_score_logit).toFixed(6)}</span></div>` : ''}
+                    ${data.base_score_logit !== undefined ? `<div class="flex justify-between"><span class="text-slate-400">Base score</span><span class="text-white font-mono">${Number(data.base_score_logit).toFixed(6)}</span></div>` : ''}
+                    ${data.bias !== undefined ? `<div class="flex justify-between"><span class="text-slate-400">Bias term</span><span class="text-white font-mono">${Number(data.bias).toFixed(6)}</span></div>` : ''}
+                </div>
+            </div>
+
+            <div class="p-6 rounded-2xl border border-slate-700 bg-slate-800/40">
+                <h4 class="text-emerald-400 font-black uppercase tracking-wider text-sm mb-4">Thông tin train / tune</h4>
+                <div class="space-y-3 text-sm">
+                    <div class="flex justify-between"><span class="text-slate-400">Thời gian train</span><span class="text-white font-mono">${Number(summary.training_time_sec || data.training_time_sec || 0).toFixed(2)}s</span></div>
+                    ${summary.best_score_val !== undefined ? `<div class="flex justify-between"><span class="text-slate-400">Best validation score</span><span class="text-white font-mono">${summary.best_score_val}</span></div>` : ''}
+                    ${summary.best_score_cv !== undefined ? `<div class="flex justify-between"><span class="text-slate-400">Best CV score</span><span class="text-white font-mono">${summary.best_score_cv}</span></div>` : ''}
+                    ${summary.n_trials !== undefined ? `<div class="flex justify-between"><span class="text-slate-400">Số trial tune</span><span class="text-white font-mono">${summary.n_trials}</span></div>` : ''}
+                </div>
+            </div>
+        </div>
+    `;
+
+    if (data.probabilities) {
+        html += `
+            <div class="mb-8">
+                ${renderProbabilityCards(data.probabilities, data.predicted_label)}
+            </div>
+        `;
+    }
+
+    html += `
+        <div class="mb-8 overflow-hidden rounded-2xl border border-slate-700 bg-[#1e293b]">
+            <div class="px-6 py-4 bg-slate-700/40 border-b border-slate-700">
+                <h4 class="text-white font-bold">Top feature ảnh hưởng đến quyết định</h4>
+                <p class="text-slate-400 text-sm mt-1">${isCustom ? 'Xấp xỉ theo các node mà mẫu đã đi qua trong từng cây.' : 'Contribution lấy trực tiếp từ booster bằng pred_contribs.'}</p>
+            </div>
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="bg-slate-700/50 text-[11px] uppercase tracking-wider text-slate-300">
+                        <th class="px-6 py-4 font-bold">Feature</th>
+                        <th class="px-6 py-4 font-bold text-center">TF-IDF</th>
+                        <th class="px-6 py-4 font-bold text-center">${isCustom ? 'Approx contrib' : 'Contrib'}</th>
+                        <th class="px-6 py-4 font-bold text-center">Hướng tác động</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/50 text-sm">
+                    ${topFeatures.length ? topFeatures.map(item => `
+                        <tr class="hover:bg-slate-700/20 transition-colors">
+                            <td class="px-6 py-4 text-white font-medium">${item.feature}</td>
+                            <td class="px-6 py-4 font-mono text-center text-blue-300">${Number(item.tfidf_value || 0).toFixed(6)}</td>
+                            <td class="px-6 py-4 font-mono text-center ${Number((item.approx_contribution ?? item.contribution) || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${Number(item.approx_contribution ?? item.contribution ?? 0).toFixed(6)}</td>
+                            <td class="px-6 py-4 text-center text-slate-300">${item.direction || '-'}</td>
+                        </tr>
+                    `).join('') : `
+                        <tr><td colspan="4" class="px-6 py-8 text-center text-slate-500">Không có feature nổi bật để hiển thị.</td></tr>
+                    `}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    if (isCustom && topTrees.length) {
+        html += `
+            <div class="mb-8 space-y-4">
+                <div class="px-1">
+                    <h4 class="text-white font-bold">Những cây ảnh hưởng mạnh nhất</h4>
+                    <p class="text-slate-400 text-sm mt-1">Mỗi cây đóng góp một leaf weight; tổng các contribution tạo ra xác suất cuối.</p>
+                </div>
+                ${topTrees.map(tree => `
+                    <div class="p-5 rounded-2xl border border-slate-700 bg-slate-800/40">
+                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                            <div>
+                                <h5 class="text-blue-300 font-bold">Tree #${tree.tree_index}</h5>
+                                <p class="text-slate-400 text-sm">Path length: ${tree.path_length} | leaf weight: ${Number(tree.leaf_weight).toFixed(6)}</p>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-xs uppercase tracking-widest text-slate-500 block">Contribution</span>
+                                <span class="font-mono font-bold ${Number(tree.tree_contribution) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${Number(tree.tree_contribution).toFixed(6)}</span>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            ${(tree.path || []).map(step => `
+                                <div class="px-4 py-3 rounded-xl bg-slate-900/40 border border-slate-800 text-sm">
+                                    <span class="text-white font-medium">${step.feature_name}</span>
+                                    <span class="text-slate-400"> | value = </span><span class="font-mono text-blue-300">${Number(step.feature_value).toFixed(6)}</span>
+                                    <span class="text-slate-400"> | threshold = </span><span class="font-mono text-amber-300">${Number(step.threshold).toFixed(6)}</span>
+                                    <span class="text-slate-400"> | đi </span><span class="font-bold ${step.direction === 'left' ? 'text-emerald-400' : 'text-rose-400'}">${step.direction}</span>
+                                </div>
+                            `).join('') || '<div class="text-slate-500 italic">Cây này là leaf ngay từ root.</div>'}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    } else if (!isCustom && topGlobal.length) {
+        html += `
+            <div class="mb-8 overflow-hidden rounded-2xl border border-slate-700 bg-[#1e293b]">
+                <div class="px-6 py-4 bg-slate-700/40 border-b border-slate-700">
+                    <h4 class="text-white font-bold">Feature mạnh toàn cục của model</h4>
+                    <p class="text-slate-400 text-sm mt-1">Dựa trên importance type = gain.</p>
+                </div>
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="bg-slate-700/50 text-[11px] uppercase tracking-wider text-slate-300">
+                            <th class="px-6 py-4 font-bold">Feature</th>
+                            <th class="px-6 py-4 font-bold text-center">Gain</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-700/50 text-sm">
+                        ${topGlobal.map(item => `
+                            <tr class="hover:bg-slate-700/20 transition-colors">
+                                <td class="px-6 py-4 text-white font-medium">${item.feature}</td>
+                                <td class="px-6 py-4 font-mono text-center text-amber-300">${Number(item.gain).toFixed(6)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    const bestParams = summary.best_params || summary?.params?.best_params;
+    if (bestParams) {
+        html += `
+            <div class="p-6 rounded-2xl border border-slate-700 bg-slate-800/40">
+                <h4 class="text-white font-bold mb-4">Bộ tham số được chọn</h4>
+                <pre class="text-sm text-emerald-300 whitespace-pre-wrap break-words">${JSON.stringify(bestParams, null, 2)}</pre>
+            </div>
+        `;
+    }
+
+    return html;
+}
+
 function renderXgbGenericDetails(data) {
     const probNeg = data.prob_neg != null ? (data.prob_neg * 100).toFixed(2) : "N/A";
     const probPos = data.prob_pos != null ? (data.prob_pos * 100).toFixed(2) : "N/A";
@@ -700,24 +909,32 @@ function renderXgbGenericDetails(data) {
 }
 
 function renderUnsupportedDetails(data) {
+    const message = typeof data === 'string'
+        ? data
+        : (data?.message || 'Model này hiện chưa có phần giải thích chi tiết.');
+
     return `
         <div class="p-6 rounded-2xl border border-slate-700 bg-slate-900/50">
             <h4 class="text-white font-bold text-xl mb-3">Chưa có giải thích chi tiết</h4>
-            <p class="text-slate-300">${data.message || 'Model này hiện chưa có phần giải thích chi tiết.'}</p>
+            <p class="text-slate-300">${message}</p>
         </div>
     `;
 }
-function closeModal() { document.getElementById('prob-modal').classList.add('hidden'); }
+
+function closeModal() {
+    document.getElementById('prob-modal').classList.add('hidden');
+}
+
 function renderModelStudyChart(type) {
     const container = document.getElementById('table-container');
     const loading = document.getElementById('loading');
     const paginationControls = document.getElementById('pagination-controls');
 
     if (loading) loading.classList.add('hidden');
-    if (paginationControls) paginationControls.classList.add('hidden'); 
+    if (paginationControls) paginationControls.classList.add('hidden');
     container.classList.remove('opacity-20');
 
-    clearContainerUI(); // Dọn dẹp trước
+    clearContainerUI();
 
     const titles = {
         'mnb': "Laplace smoothing - Multinomial Naive Bayes",
@@ -725,7 +942,7 @@ function renderModelStudyChart(type) {
         'xgb': "Max Depth - XGBoost Classifier"
     };
 
-    let htmlContent = `
+    const htmlContent = `
         <div id="chart-study-wrapper" class="p-8 flex flex-col items-center bg-slate-800/30 rounded-2xl border border-slate-700 w-full animate-fade-in">
             <div class="flex gap-4 mb-8 bg-slate-900/50 p-1 rounded-xl border border-slate-700">
                 <button onclick="renderModelStudyChart('mnb')" class="px-4 py-2 rounded-lg text-sm ${type === 'mnb' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-400 hover:text-white transition-colors'}">MNB</button>
@@ -738,7 +955,7 @@ function renderModelStudyChart(type) {
             <div class="w-full flex justify-center">
                 <img src="${API_BASE}/charts/${type}?t=${new Date().getTime()}" 
                      class="rounded-xl shadow-2xl border border-slate-600 max-w-4xl h-auto"
-                     onerror="this.src='https://placehold.co/600x400/1e293b/475569?text=Chưa+có+dữ liệu+${type.toUpperCase()}'">
+                     onerror="this.src='https://placehold.co/600x400/1e293b/475569?text=Chưa+có+dữ+liệu+${type.toUpperCase()}'">
             </div>
         </div>
     `;
@@ -747,31 +964,30 @@ function renderModelStudyChart(type) {
 }
 
 // ==========================================
-// TÍNH NĂNG KIỂM THỬ VĂN BẢN (INFERENCE) - NÂNG CẤP UI/UX
+// TÍNH NĂNG KIỂM THỬ VĂN BẢN (INFERENCE)
 // ==========================================
 function renderTestTextUI() {
     const container = document.getElementById('table-container');
-    
-    // ẨN THANH PHÂN TRANG
+
     const paginationControls = document.getElementById('pagination-controls');
     if (paginationControls) paginationControls.classList.add('hidden');
 
-    clearContainerUI(); // Dọn dẹp sạch sẽ các thẻ cũ
+    clearContainerUI();
 
     const htmlContent = `
         <div id="test-text-wrapper" class="w-full max-w-[1100px] mx-auto flex flex-col gap-8 animate-fade-in pb-10 pt-5">
             <div class="bg-gradient-to-br from-slate-800 to-slate-900 p-8 rounded-3xl border border-slate-700 shadow-[0_8px_30px_rgb(0,0,0,0.5)] relative overflow-hidden">
                 <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500"></div>
-                
+
                 <h3 class="text-white font-bold mb-6 text-xl flex items-center">
                     <i class="fas fa-robot text-orange-400 mr-3 text-2xl"></i> Trợ lý AI Đánh giá Cảm xúc
                 </h3>
-                
+
                 <div class="relative">
                     <textarea id="text-input" rows="4" 
                               class="w-full bg-[#0f172a]/80 text-slate-100 p-5 rounded-2xl border border-slate-600 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 focus:outline-none resize-none text-lg transition-all" 
                               placeholder="Hãy dán một dòng bình luận, phản hồi hoặc bài đăng vào đây..."></textarea>
-                    
+
                     <button onclick="submitTestText()" class="absolute bottom-4 right-4 px-6 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl font-bold shadow-lg shadow-orange-500/30 transition-transform transform hover:-translate-y-0.5 flex items-center gap-2">
                         <i class="fas fa-magic"></i> Phân tích ngay
                     </button>
@@ -825,12 +1041,11 @@ async function submitTestText() {
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    
                     <div class="bg-slate-800/60 backdrop-blur-md p-6 rounded-2xl border border-slate-700 shadow-lg hover:border-blue-500/30 transition-colors">
                         <div class="flex justify-between items-center mb-6 pb-4 border-b border-slate-700/50">
                             <h4 class="text-blue-400 font-black uppercase tracking-wider text-lg"><i class="fas fa-microchip mr-2"></i>Nhóm Custom</h4>
                             <div class="text-right">
-                                <span class="text-[9px] text-slate-500 block uppercase font-bold tracking-widest mb-1 pl-1000">Quyết định Nhóm</span>
+                                <span class="text-[9px] text-slate-500 block uppercase font-bold tracking-widest mb-1">Quyết định Nhóm</span>
                                 ${getLabelUI(data.votes.custom)}
                             </div>
                         </div>
@@ -855,7 +1070,6 @@ async function submitTestText() {
                             <div class="flex justify-between items-center bg-slate-900/40 p-3 rounded-xl border border-slate-800"><span class="text-slate-300 font-medium">XGBoost Classifier</span> ${getLabelUI(data.library.xgb)}</div>
                         </div>
                     </div>
-
                 </div>
 
                 <div class="bg-gradient-to-r from-slate-800 to-[#0f172a] p-8 rounded-3xl border-2 border-slate-600 flex flex-col md:flex-row justify-between items-center shadow-2xl relative overflow-hidden mt-2">
@@ -870,23 +1084,13 @@ async function submitTestText() {
                 </div>
             `;
             resultsContainer.innerHTML = html;
+        } else {
+            resultsContainer.innerHTML = `<div class="p-6 bg-rose-500/10 border border-rose-500/50 text-rose-400 rounded-xl text-center font-bold">${result.message || 'Lỗi khi phân tích văn bản!'}</div>`;
         }
     } catch (error) {
+        console.error(error);
         resultsContainer.innerHTML = `<div class="p-6 bg-rose-500/10 border border-rose-500/50 text-rose-400 rounded-xl text-center font-bold">Lỗi kết nối tới Server. Hãy đảm bảo API đang chạy!</div>`;
     }
-}
-
-function getChartKeyByModelName(modelName) {
-    const mapping = {
-        "Multinomial Naive Bayes (Custom)": "mnb_custom_cm",
-        "Multinomial Naive Bayes (Library)": "mnb_library_cm",
-        "Linear SVM (One-Sample Custom)": "svm_one_custom_cm",
-        "Linear SVM (Full-Sample Custom)": "svm_full_custom_cm",
-        "Linear SVM (Library)": "svm_library_cm",
-        "XGBoost (Custom)": "xgb_custom_cm",
-        "XGBoost (Library)": "xgb_library_cm",
-    };
-    return mapping[modelName] || "";
 }
 
 window.onload = () => changeTab('view-data');
