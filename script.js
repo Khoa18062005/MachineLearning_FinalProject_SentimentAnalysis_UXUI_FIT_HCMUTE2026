@@ -6,6 +6,8 @@ let currentPage = 1;
 const rowsPerPage = 50;
 let currentMode = 'raw';
 let currentErrorModelName = '';
+let globalModelData = []; 
+let currentModelGroup = 'custom';
 
 async function changeTab(tabName) {
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
@@ -131,8 +133,10 @@ async function fetchAndRenderModelCards(endpoint) {
         const result = await res.json();
 
         if (result.status === "success") {
+            globalModelData = result.data; // Lưu dữ liệu vào biến toàn cục
+            
             setTimeout(() => {
-                renderModelCards(result.data);
+                renderModelCards(); // Gọi hàm render không cần truyền data
                 loading.classList.add('hidden');
                 container.classList.remove('opacity-100', 'opacity-20');
             }, 300);
@@ -229,74 +233,145 @@ function getChartKeyByModelName(modelName) {
         "Linear SVM (Library)": "svm_library_cm",
         "XGBoost (Custom)": "xgb_custom_cm",
         "XGBoost (Library)": "xgb_library_cm",
+        "Nhóm Custom (Majority Vote)": "ensemble_custom_cm",
+        "Nhóm Library (Majority Vote)": "ensemble_library_cm",
     };
     return mapping[modelName] || "";
 }
 
-function renderModelCards(data) {
+function switchModelGroup(group) {
+    currentModelGroup = group;
+    renderModelCards();
+}
+
+function renderModelCards() {
     const container = document.getElementById('table-container');
     clearContainerUI();
 
-    let htmlContent = `<div id="model-cards-wrapper" class="flex flex-col gap-8 p-6 w-full animate-fade-in">`;
+    // 1. Tạo Nút Toggle Custom / Library
+    let headerHtml = `
+        <div class="flex gap-4 mb-6 mt-5 bg-slate-900/80 p-1.5 rounded-xl border border-slate-700 w-fit mx-auto shadow-lg">
+            <button onclick="switchModelGroup('custom')" class="px-8 py-2.5 rounded-lg text-sm font-bold transition-all duration-300 flex items-center ${currentModelGroup === 'custom' ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]' : 'text-slate-400 hover:text-white hover:bg-slate-800'}">
+                <i class="fas fa-microchip mr-2"></i> Nhóm Custom
+            </button>
+            <button onclick="switchModelGroup('library')" class="px-8 py-2.5 rounded-lg text-sm font-bold transition-all duration-300 flex items-center ${currentModelGroup === 'library' ? 'bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'text-slate-400 hover:text-white hover:bg-slate-800'}">
+                <i class="fas fa-book mr-2"></i> Nhóm Library
+            </button>
+        </div>
+    `;
 
-    data.forEach(model => {
-        const isTrained = !model.model_name.includes("(Chưa huấn luyện)");
-        const borderColor = Number(model.accuracy) > 85 ? 'border-emerald-500' : 'border-blue-500';
-        const cmChartKey = getChartKeyByModelName(model.model_name);
+    // 2. Lọc dữ liệu theo Nhóm hiện tại
+    let filteredData = globalModelData.filter(model => {
+        const name = model.model_name.toLowerCase();
+        if (name.includes("one-sample")) {
+            return false;
+        }
 
-        htmlContent += `
-            <div class="flex flex-col lg:flex-row gap-6 bg-slate-800/40 p-6 rounded-2xl border border-slate-700 items-stretch">
-                <div onclick="viewModelErrors('${String(model.model_name).replace(/'/g, "\\'")}')" 
-                     class="w-full lg:w-1/4 bg-slate-800 rounded-xl p-6 border-t-4 ${borderColor} shadow-lg hover:transform hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between">
-                    <h3 class="text-xl font-bold text-white mb-4 text-center">${model.model_name}</h3>
-                    <div class="space-y-4">
-                        <div class="flex justify-between items-center bg-slate-700/50 p-3 rounded-lg">
-                            <span class="text-slate-400 text-sm"><i class="fas fa-clock mr-2"></i>Thời gian:</span>
-                            <span class="text-white font-mono font-bold">${model.training_time_sec}s</span>
-                        </div>
-                        <div class="flex justify-between items-center bg-emerald-900/20 p-3 rounded-lg border border-emerald-500/20">
-                            <span class="text-emerald-400 text-sm"><i class="fas fa-check-circle mr-2"></i>Đúng:</span>
-                            <span class="text-emerald-400 font-mono font-bold">${Number(model.correct_predictions || 0).toLocaleString()}</span>
-                        </div>
-                        <div class="flex justify-between items-center bg-rose-900/20 p-3 rounded-lg border border-rose-500/20">
-                            <span class="text-rose-400 text-sm"><i class="fas fa-times-circle mr-2"></i>Sai:</span>
-                            <span class="text-rose-400 font-mono font-bold">${Number(model.incorrect_predictions || 0).toLocaleString()}</span>
-                        </div>
-                        ${model.f1_score !== undefined ? `
-                        <div class="flex justify-between items-center bg-amber-900/20 p-3 rounded-lg border border-amber-500/20">
-                            <span class="text-amber-400 text-sm"><i class="fas fa-scale-balanced mr-2"></i>F1-score:</span>
-                            <span class="text-amber-400 font-mono font-bold">${model.f1_score}</span>
-                        </div>` : ''}
-                    </div>
-                    <div class="mt-6 pt-4 border-t border-slate-700 text-center">
-                        <p class="text-slate-400 text-sm mb-1">Accuracy</p>
-                        <p class="text-4xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
-                            ${model.accuracy}%
-                        </p>
-                    </div>
-                    <div class="text-center mt-3">
-                        <span class="text-xs text-slate-500 italic"><i class="fas fa-hand-pointer mr-1"></i>Click để xem mẫu lỗi + lý do dự đoán</span>
-                    </div>
-                </div>
-
-                <div class="w-full lg:w-3/4 bg-[#1e293b] rounded-xl border border-slate-700 p-4 flex flex-col items-center justify-center relative overflow-hidden">
-                    ${isTrained && cmChartKey ? `
-                        <img src="${API_BASE}/charts/${cmChartKey}?t=${new Date().getTime()}" 
-                             class="w-full h-auto max-h-[450px] object-contain rounded-lg shadow-md"
-                             onerror="this.parentElement.innerHTML='<div class=\\'flex flex-col items-center justify-center h-full text-slate-500 italic\\'><i class=\\'fas fa-image text-3xl mb-2 opacity-50\\'></i><p>Chưa có ảnh biểu đồ ${cmChartKey}</p></div>'">
-                    ` : `
-                        <div class="text-slate-600 italic flex flex-col items-center justify-center h-full">
-                            <i class="fas fa-chart-bar text-4xl mb-3 opacity-20"></i>
-                            <p>Hãy huấn luyện mô hình để xem biểu đồ</p>
-                        </div>
-                    `}
-                </div>
-            </div>
-        `;
+        if (currentModelGroup === 'custom') {
+            return name.includes('custom');
+        } else {
+            return name.includes('library');
+        }
     });
 
+    // 3. Tách mô hình Chính (Majority Vote) và mô hình Con
+    let mainModel = filteredData.find(m => m.model_name.includes('Majority Vote'));
+    let subModels = filteredData.filter(m => !m.model_name.includes('Majority Vote'));
+
+    let htmlContent = `<div id="model-cards-wrapper" class="flex flex-col gap-8 px-6 pb-6 pt-0 w-full animate-fade-in">`;
+
+    // Vẽ mô hình chính trên cùng
+    if (mainModel) {
+        htmlContent += `
+            <div class="relative">
+                <div class="absolute -inset-1 bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl blur opacity-20"></div>
+                <div class="relative bg-[#0f172a] rounded-3xl p-6 border border-amber-500/30">
+                    <h2 class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400 mb-6 flex items-center uppercase tracking-wider">
+                        <i class="fas fa-crown mr-3 text-amber-400 text-3xl"></i> Mô hình Trọng tài (Majority Vote)
+                    </h2>
+                    ${generateSingleModelCardHtml(mainModel, true)}
+                </div>
+            </div>`;
+    }
+
+    // Vẽ các mô hình con bên dưới
+    if (subModels.length > 0) {
+        htmlContent += `
+            <div class="mt-4">
+                <h3 class="text-xl font-bold text-slate-300 mb-6 flex items-center border-b border-slate-700/50 pb-3">
+                    <i class="fas fa-network-wired mr-3 text-slate-500"></i> Các mô hình thành phần
+                </h3>
+                <div class="flex flex-col gap-8">
+                    ${subModels.map(m => generateSingleModelCardHtml(m, false)).join('')}
+                </div>
+            </div>`;
+    } else if (!mainModel) {
+        htmlContent += `<div class="text-center p-10 text-slate-500 italic">Không có dữ liệu mô hình cho nhóm này.</div>`;
+    }
+
     htmlContent += `</div>`;
-    container.insertAdjacentHTML('beforeend', htmlContent);
+    container.insertAdjacentHTML('beforeend', headerHtml + htmlContent);
+}
+
+// Hàm hỗ trợ vẽ HTML cho từng Card Model
+function generateSingleModelCardHtml(model, isMain) {
+    const isTrained = !model.model_name.includes("(Chưa huấn luyện)");
+    const borderColor = Number(model.accuracy) > 85 ? 'border-emerald-500' : 'border-blue-500';
+    const cmChartKey = getChartKeyByModelName(model.model_name);
+    
+    // Đổi style nếu là mô hình Chính
+    const cardBg = isMain ? 'bg-slate-900' : 'bg-slate-800/40';
+    const highlightBorder = isMain ? 'border-amber-500/50' : 'border-slate-700';
+
+    return `
+        <div class="flex flex-col lg:flex-row gap-6 ${cardBg} p-6 rounded-2xl border ${highlightBorder} items-stretch">
+            <div onclick="viewModelErrors('${String(model.model_name).replace(/'/g, "\\'")}')" 
+                 class="w-full lg:w-1/4 bg-slate-800 rounded-xl p-6 border-t-4 ${borderColor} shadow-lg hover:transform hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between">
+                <h3 class="text-xl font-bold text-white mb-4 text-center">${model.model_name}</h3>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center bg-slate-700/50 p-3 rounded-lg">
+                        <span class="text-slate-400 text-sm"><i class="fas fa-clock mr-2"></i>Thời gian:</span>
+                        <span class="text-white font-mono font-bold">${model.training_time_sec}s</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-emerald-900/20 p-3 rounded-lg border border-emerald-500/20">
+                        <span class="text-emerald-400 text-sm"><i class="fas fa-check-circle mr-2"></i>Đúng:</span>
+                        <span class="text-emerald-400 font-mono font-bold">${Number(model.correct_predictions || 0).toLocaleString()}</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-rose-900/20 p-3 rounded-lg border border-rose-500/20">
+                        <span class="text-rose-400 text-sm"><i class="fas fa-times-circle mr-2"></i>Sai:</span>
+                        <span class="text-rose-400 font-mono font-bold">${Number(model.incorrect_predictions || 0).toLocaleString()}</span>
+                    </div>
+                    ${model.f1_score !== undefined ? `
+                    <div class="flex justify-between items-center bg-amber-900/20 p-3 rounded-lg border border-amber-500/20">
+                        <span class="text-amber-400 text-sm"><i class="fas fa-scale-balanced mr-2"></i>F1-score:</span>
+                        <span class="text-amber-400 font-mono font-bold">${model.f1_score}</span>
+                    </div>` : ''}
+                </div>
+                <div class="mt-6 pt-4 border-t border-slate-700 text-center">
+                    <p class="text-slate-400 text-sm mb-1">Accuracy</p>
+                    <p class="text-4xl font-black bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
+                        ${model.accuracy}%
+                    </p>
+                </div>
+                <div class="text-center mt-3">
+                    <span class="text-xs text-slate-500 italic"><i class="fas fa-hand-pointer mr-1"></i>Click để xem mẫu lỗi + lý do dự đoán</span>
+                </div>
+            </div>
+
+            <div class="w-full lg:w-3/4 bg-[#1e293b] rounded-xl border border-slate-700 p-4 flex flex-col items-center justify-center relative overflow-hidden">
+                ${isTrained && cmChartKey ? `
+                    <img src="${API_BASE}/charts/${cmChartKey}?t=${new Date().getTime()}" 
+                         class="w-full h-auto max-h-[450px] object-contain rounded-lg shadow-md"
+                         onerror="this.parentElement.innerHTML='<div class=\\'flex flex-col items-center justify-center h-full text-slate-500 italic\\'><i class=\\'fas fa-image text-3xl mb-2 opacity-50\\'></i><p>Chưa có ảnh biểu đồ ${cmChartKey}</p></div>'">
+                ` : `
+                    <div class="text-slate-600 italic flex flex-col items-center justify-center h-full">
+                        <i class="fas fa-chart-bar text-4xl mb-3 opacity-20"></i>
+                        <p>Hãy huấn luyện mô hình để xem biểu đồ</p>
+                    </div>
+                `}
+            </div>
+        </div>
+    `;
 }
 
 function renderTable() {
@@ -356,17 +431,17 @@ function renderTable() {
         return `
         <tr ${onclickAttr} class="transition-colors group border-b border-slate-800 ${rowBg} ${isErrorMode ? 'cursor-pointer hover:bg-blue-600/10' : ''}">
             ${columns.map(col => {
-                const value = item[col];
-                const isLongText = col === 'text' || col === 'C6';
-                let textColor = 'text-slate-400';
+            const value = item[col];
+            const isLongText = col === 'text' || col === 'C6';
+            let textColor = 'text-slate-400';
 
-                if (typeof value === 'number') textColor = 'font-mono text-emerald-400';
-                if (col.toLowerCase() === 'predicted') textColor = 'font-mono text-red-500 font-bold';
-                if (col.toLowerCase() === 'target') textColor = 'font-mono text-blue-400 font-bold';
-                if (isDirty && isLongText) textColor = 'text-red-400 font-medium';
+            if (typeof value === 'number') textColor = 'font-mono text-emerald-400';
+            if (col.toLowerCase() === 'predicted') textColor = 'font-mono text-red-500 font-bold';
+            if (col.toLowerCase() === 'target') textColor = 'font-mono text-blue-400 font-bold';
+            if (isDirty && isLongText) textColor = 'text-red-400 font-medium';
 
-                return `<td class="px-6 py-4 text-sm ${isLongText ? 'max-w-md truncate' : 'whitespace-nowrap'} ${textColor}">${value}</td>`;
-            }).join('')}
+            return `<td class="px-6 py-4 text-sm ${isLongText ? 'max-w-md truncate' : 'whitespace-nowrap'} ${textColor}">${value}</td>`;
+        }).join('')}
         </tr>`;
     }).join('');
 
@@ -456,6 +531,10 @@ async function showModelDetails(text, target, predicted) {
 
         if (data.detail_type === "xgb_generic") {
             content.innerHTML = renderXgbGenericDetails(data);
+            return;
+        }
+        if (data.detail_type === "ensemble_voting") {
+            content.innerHTML = renderEnsembleVotingDetails(data);
             return;
         }
 
@@ -1092,5 +1171,44 @@ async function submitTestText() {
         resultsContainer.innerHTML = `<div class="p-6 bg-rose-500/10 border border-rose-500/50 text-rose-400 rounded-xl text-center font-bold">Lỗi kết nối tới Server. Hãy đảm bảo API đang chạy!</div>`;
     }
 }
+function renderEnsembleVotingDetails(data) {
+    let html = renderHeaderInfoBox(data);
 
+    html += `
+        <div class="mb-6 p-5 rounded-2xl border border-blue-500/30 bg-blue-500/10 text-blue-200">
+            <p class="font-bold mb-1"><i class="fas fa-info-circle mr-2"></i>Giải thích cơ chế Nhóm</p>
+            <p class="text-sm">Kết quả cuối cùng được quyết định dựa trên đa số phiếu bầu (2/3). Dưới đây là lá phiếu chi tiết của từng thành viên trong nhóm.</p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            ${data.votes.map(v => {
+                const isCorrect = v.pred === data.actual_target;
+                const statusColor = v.pred === 4 ? 'emerald' : 'rose';
+                const borderColor = isCorrect ? 'border-emerald-500/50' : 'border-rose-500/50';
+                
+                return `
+                    <div class="p-6 rounded-2xl border ${borderColor} bg-slate-800/40 relative overflow-hidden">
+                        <div class="absolute top-0 right-0 p-2">
+                            ${isCorrect 
+                                ? '<i class="fas fa-check-circle text-emerald-400"></i>' 
+                                : '<i class="fas fa-times-circle text-rose-400"></i>'}
+                        </div>
+                        <h4 class="text-slate-400 text-[10px] uppercase font-black mb-3">${v.name}</h4>
+                        <div class="flex flex-col items-center py-4">
+                            <span class="text-xs text-slate-500 mb-2">Đã bỏ phiếu cho:</span>
+                            <span class="px-4 py-2 rounded-xl bg-${statusColor}-500/20 text-${statusColor}-400 border border-${statusColor}-500/40 font-bold">
+                                ${v.pred === 4 ? 'TÍCH CỰC (4)' : 'TIÊU CỰC (0)'}
+                            </span>
+                        </div>
+                        <p class="text-[10px] text-center mt-2 ${isCorrect ? 'text-emerald-500/60' : 'text-rose-500/60'} font-medium">
+                            ${isCorrect ? 'Dự đoán đúng' : 'Dự đoán sai'}
+                        </p>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+
+    return html;
+}
 window.onload = () => changeTab('view-data');
