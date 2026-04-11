@@ -6,8 +6,8 @@ let currentPage = 1;
 const rowsPerPage = 50;
 let currentMode = 'raw';
 let currentErrorModelName = '';
-let globalModelData = []; 
-let currentModelGroup = 'custom';
+let globalModelData = [];
+let currentModelGroup = 'dual';
 
 async function changeTab(tabName) {
     document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
@@ -56,7 +56,7 @@ async function changeTab(tabName) {
     } else if (tabName === 'test-text') {
         currentMode = 'test_text';
         title.innerText = "Công cụ AI Phân tích Cảm xúc";
-        desc.innerText = "Hệ thống sẽ tiền xử lý dữ liệu và yêu cầu 6 AI Agent thực hiện bỏ phiếu chéo.";
+        desc.innerText = "Hệ thống sẽ tiền xử lý dữ liệu và yêu cầu 6 AI Agent thực hiện bỏ phiếu.";
         if (datasetControls) datasetControls.classList.add('hidden');
         renderTestTextUI();
     }
@@ -134,7 +134,7 @@ async function fetchAndRenderModelCards(endpoint) {
 
         if (result.status === "success") {
             globalModelData = result.data; // Lưu dữ liệu vào biến toàn cục
-            
+
             setTimeout(() => {
                 renderModelCards(); // Gọi hàm render không cần truyền data
                 loading.classList.add('hidden');
@@ -235,6 +235,7 @@ function getChartKeyByModelName(modelName) {
         "XGBoost (Library)": "xgb_library_cm",
         "Nhóm Custom (Majority Vote)": "ensemble_custom_cm",
         "Nhóm Library (Majority Vote)": "ensemble_library_cm",
+        "Track-Dual Validation (Majority Vote)": "ensemble_dual_cm",
     };
     return mapping[modelName] || "";
 }
@@ -248,9 +249,12 @@ function renderModelCards() {
     const container = document.getElementById('table-container');
     clearContainerUI();
 
-    // 1. Tạo Nút Toggle Custom / Library
+    // 1. Tạo Nút Toggle với 3 tab: Custom / Library / Track-Dual
     let headerHtml = `
         <div class="flex gap-4 mb-6 mt-5 bg-slate-900/80 p-1.5 rounded-xl border border-slate-700 w-fit mx-auto shadow-lg">
+            <button onclick="switchModelGroup('dual')" class="px-8 py-2.5 rounded-lg text-sm font-bold transition-all duration-300 flex items-center ${currentModelGroup === 'dual' ? 'bg-amber-600 text-white shadow-[0_0_15px_rgba(217,119,6,0.4)]' : 'text-slate-400 hover:text-white hover:bg-slate-800'}">
+                <i class="fas fa-check-double mr-2"></i> Track-Dual Validation
+            </button>
             <button onclick="switchModelGroup('custom')" class="px-8 py-2.5 rounded-lg text-sm font-bold transition-all duration-300 flex items-center ${currentModelGroup === 'custom' ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]' : 'text-slate-400 hover:text-white hover:bg-slate-800'}">
                 <i class="fas fa-microchip mr-2"></i> Nhóm Custom
             </button>
@@ -263,43 +267,79 @@ function renderModelCards() {
     // 2. Lọc dữ liệu theo Nhóm hiện tại
     let filteredData = globalModelData.filter(model => {
         const name = model.model_name.toLowerCase();
-        if (name.includes("one-sample")) {
-            return false;
-        }
+        if (name.includes("one-sample")) return false;
 
         if (currentModelGroup === 'custom') {
-            return name.includes('custom');
-        } else {
-            return name.includes('library');
+            return name.includes('custom') && !name.includes('track-dual');
+        } else if (currentModelGroup === 'library') {
+            return name.includes('library') && !name.includes('track-dual');
+        } else if (currentModelGroup === 'dual') {
+            return name.includes('track-dual') || name.includes('majority vote');
         }
     });
 
-    // 3. Tách mô hình Chính (Majority Vote) và mô hình Con
-    let mainModel = filteredData.find(m => m.model_name.includes('Majority Vote'));
-    let subModels = filteredData.filter(m => !m.model_name.includes('Majority Vote'));
+    // 3. Tách mô hình Chính và mô hình Con
+    let mainModel, subModels;
+    if (currentModelGroup === 'dual') {
+        mainModel = filteredData.find(m => m.model_name.toLowerCase().includes('track-dual'));
+        subModels = filteredData.filter(m => !m.model_name.toLowerCase().includes('track-dual'));
+    } else {
+        mainModel = filteredData.find(m => m.model_name.includes('Majority Vote'));
+        subModels = filteredData.filter(m => !m.model_name.includes('Majority Vote'));
+    }
 
     let htmlContent = `<div id="model-cards-wrapper" class="flex flex-col gap-8 px-6 pb-6 pt-0 w-full animate-fade-in">`;
 
     // Vẽ mô hình chính trên cùng
     if (mainModel) {
+        const mainTitle = currentModelGroup === 'dual' 
+            ? 'Mô hình Chốt hạ (Track-Dual Validation)' 
+            : 'Mô hình Trọng tài (Majority Vote)';
+
         htmlContent += `
             <div class="relative">
                 <div class="absolute -inset-1 bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl blur opacity-20"></div>
                 <div class="relative bg-[#0f172a] rounded-3xl p-6 border border-amber-500/30">
                     <h2 class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400 mb-6 flex items-center uppercase tracking-wider">
-                        <i class="fas fa-crown mr-3 text-amber-400 text-3xl"></i> Mô hình Trọng tài (Majority Vote)
+                        <i class="fas fa-crown mr-3 text-amber-400 text-3xl"></i> ${mainTitle}
                     </h2>
                     ${generateSingleModelCardHtml(mainModel, true)}
+
+                    <div class="mt-12 pt-8 border-t border-slate-700/50 flex flex-col items-center">
+                        <div class="flex items-center gap-3 mb-6">
+                            <i class="fas fa-chart-bar text-rose-500"></i>
+                            <h4 class="text-slate-300 text-sm font-bold uppercase tracking-widest">Tương quan độ chính xác</h4>
+                        </div>
+                        <div class="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 w-full max-w-4xl shadow-inner">
+                            <img src="${API_BASE}/charts/accuracy_${currentModelGroup}?t=${new Date().getTime()}" 
+                                 class="w-full h-auto"
+                                 onerror="this.parentElement.innerHTML='<p class=\\'text-slate-600 italic py-10 text-center\\'>Đồ thị đang được cập nhật...</p>'">
+                        </div>
+                        <div class="mt-6 flex gap-8 text-[10px] uppercase font-black tracking-widest">
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"></span> 
+                                <span class="text-white">Mô hình Tổng (Chốt hạ)</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded bg-[#2A95BF]"></span> 
+                                <span class="text-[#2A95BF] font-medium">Mô hình con (Thành phần)</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>`;
     }
 
     // Vẽ các mô hình con bên dưới
     if (subModels.length > 0) {
+        const subTitle = currentModelGroup === 'dual' 
+            ? 'Ý kiến đánh giá từ các Nhóm' 
+            : 'Các mô hình thành phần';
+
         htmlContent += `
             <div class="mt-4">
                 <h3 class="text-xl font-bold text-slate-300 mb-6 flex items-center border-b border-slate-700/50 pb-3">
-                    <i class="fas fa-network-wired mr-3 text-slate-500"></i> Các mô hình thành phần
+                    <i class="fas fa-network-wired mr-3 text-slate-500"></i> ${subTitle}
                 </h3>
                 <div class="flex flex-col gap-8">
                     ${subModels.map(m => generateSingleModelCardHtml(m, false)).join('')}
@@ -318,7 +358,7 @@ function generateSingleModelCardHtml(model, isMain) {
     const isTrained = !model.model_name.includes("(Chưa huấn luyện)");
     const borderColor = Number(model.accuracy) > 85 ? 'border-emerald-500' : 'border-blue-500';
     const cmChartKey = getChartKeyByModelName(model.model_name);
-    
+
     // Đổi style nếu là mô hình Chính
     const cardBg = isMain ? 'bg-slate-900' : 'bg-slate-800/40';
     const highlightBorder = isMain ? 'border-amber-500/50' : 'border-slate-700';
@@ -1174,18 +1214,23 @@ async function submitTestText() {
 function renderEnsembleVotingDetails(data) {
     let html = renderHeaderInfoBox(data);
 
+    // Chỉnh sửa nội dung giải thích tùy thuộc vào loại model
+    const explanationText = data.model_name.includes("Track-Dual") 
+        ? "Kết quả cuối cùng được quyết định dựa trên sự đồng thuận. Nếu 2 nhóm đưa ra ý kiến khác nhau, kết quả sẽ ưu tiên lấy theo Nhóm Library." 
+        : "Kết quả cuối cùng được quyết định dựa trên đa số phiếu bầu (2/3). Dưới đây là lá phiếu chi tiết của từng thành viên trong nhóm.";
+
     html += `
         <div class="mb-6 p-5 rounded-2xl border border-blue-500/30 bg-blue-500/10 text-blue-200">
             <p class="font-bold mb-1"><i class="fas fa-info-circle mr-2"></i>Giải thích cơ chế Nhóm</p>
-            <p class="text-sm">Kết quả cuối cùng được quyết định dựa trên đa số phiếu bầu (2/3). Dưới đây là lá phiếu chi tiết của từng thành viên trong nhóm.</p>
+            <p class="text-sm">${explanationText}</p>
         </div>
         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-${Math.max(data.votes.length, 2)} gap-6 mb-8">
             ${data.votes.map(v => {
                 const isCorrect = v.pred === data.actual_target;
                 const statusColor = v.pred === 4 ? 'emerald' : 'rose';
                 const borderColor = isCorrect ? 'border-emerald-500/50' : 'border-rose-500/50';
-                
+
                 return `
                     <div class="p-6 rounded-2xl border ${borderColor} bg-slate-800/40 relative overflow-hidden">
                         <div class="absolute top-0 right-0 p-2">
